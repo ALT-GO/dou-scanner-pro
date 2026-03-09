@@ -14,7 +14,89 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      dou_publications: {
+        Row: {
+          competitor_match: string | null
+          created_at: string
+          full_text: string
+          id: string
+          is_relevant: boolean
+          object_text: string | null
+          organ: string | null
+          publication_type: string
+          reading_id: string
+          section: string
+          state: string | null
+        }
+        Insert: {
+          competitor_match?: string | null
+          created_at?: string
+          full_text: string
+          id?: string
+          is_relevant?: boolean
+          object_text?: string | null
+          organ?: string | null
+          publication_type: string
+          reading_id: string
+          section: string
+          state?: string | null
+        }
+        Update: {
+          competitor_match?: string | null
+          created_at?: string
+          full_text?: string
+          id?: string
+          is_relevant?: boolean
+          object_text?: string | null
+          organ?: string | null
+          publication_type?: string
+          reading_id?: string
+          section?: string
+          state?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dou_publications_reading_id_fkey"
+            columns: ["reading_id"]
+            isOneToOne: false
+            referencedRelation: "dou_readings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dou_readings: {
+        Row: {
+          created_at: string
+          id: string
+          pdf_filename: string
+          reading_date: string
+          status: string
+          total_competitor_mentions: number
+          total_opportunities: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          pdf_filename: string
+          reading_date: string
+          status?: string
+          total_competitor_mentions?: number
+          total_opportunities?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          pdf_filename?: string
+          reading_date?: string
+          status?: string
+          total_competitor_mentions?: number
+          total_opportunities?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
