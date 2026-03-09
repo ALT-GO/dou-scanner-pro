@@ -189,6 +189,55 @@ Para cada publicação, extraia:
       publications = parsed.publications || [];
     }
 
+    // Post-process: override classification using regex-based detection
+    const stateRegex = /[A-Za-zÀ-ÿ\s]+[\/\-–—]\s*(SP|MG|DF|RJ|BA|PR|RS|SC|GO|PE|CE|PA|MA|MT|MS|ES|PB|RN|AL|PI|SE|TO|RO|AC|AP|AM|RR)\b/gi;
+    const cityStateRegex = /\b(Bras[íi]lia|Taguatinga|Ceil[âa]ndia|Gama|Samambaia|Planaltina)\b/gi;
+    
+    const competitorPatterns = COMPETITORS.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const competitorRegex = new RegExp(`(${competitorPatterns.join('|')})`, 'gi');
+
+    publications = publications.map((pub: any) => {
+      const text = (pub.full_text || '') + ' ' + (pub.object_text || '') + ' ' + (pub.organ || '');
+      
+      // 1. Check competitors first (highest priority)
+      const compMatch = text.match(competitorRegex);
+      if (compMatch) {
+        return { ...pub, section: 'CONCORRENTES', competitor_match: compMatch[0].toUpperCase() };
+      }
+
+      // 2. Detect state from text using regex
+      let detectedState: string | null = pub.state || null;
+      const stateMatches = text.matchAll(stateRegex);
+      for (const m of stateMatches) {
+        const uf = m[1].toUpperCase();
+        if (['SP', 'MG', 'DF'].includes(uf)) {
+          detectedState = uf;
+          break;
+        }
+        if (!detectedState) detectedState = uf;
+      }
+
+      // Check DF cities
+      if (!detectedState || !['SP', 'MG', 'DF'].includes(detectedState)) {
+        if (cityStateRegex.test(text)) {
+          detectedState = 'DF';
+        }
+        cityStateRegex.lastIndex = 0;
+      }
+
+      // 3. Assign section based on detected state
+      if (detectedState && ['SP', 'MG', 'DF'].includes(detectedState) && pub.is_relevant) {
+        return { ...pub, state: detectedState, section: detectedState };
+      }
+
+      // 4. Relevant but no target state → AVISOS_DIVERSOS
+      if (pub.is_relevant) {
+        return { ...pub, state: detectedState, section: 'AVISOS_DIVERSOS' };
+      }
+
+      return pub;
+    });
+
     // Insert publications into database
     if (publications.length > 0) {
       const pubRecords = publications.map((pub: any) => ({
