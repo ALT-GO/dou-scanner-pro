@@ -38,107 +38,95 @@ serve(async (req) => {
 
     const systemPrompt = `Você é um especialista em análise de publicações do Diário Oficial da União (DOU) - Seção 3.
 
-O arquivo enviado já corresponde à Seção 3, portanto você NÃO precisa identificar a seção do documento. Apenas interprete corretamente o conteúdo das publicações.
+O arquivo enviado já corresponde à Seção 3. Apenas interprete o conteúdo das publicações.
 
-Sua tarefa é analisar o texto e identificar publicações relevantes seguindo RIGOROSAMENTE as regras abaixo, na ordem de prioridade indicada.
+Siga RIGOROSAMENTE as etapas abaixo, NA ORDEM indicada:
 
 ═══════════════════════════════════════════
-REGRA 1 — MONITORAMENTO DE CONCORRENTES / ORION (PRIORIDADE MÁXIMA)
+ETAPA 1 — FILTRO INICIAL (OBRIGATÓRIO)
 ═══════════════════════════════════════════
-Antes de qualquer outro filtro, verifique se a publicação menciona alguma empresa da lista abaixo em QUALQUER parte do texto.
+Se a publicação contiver qualquer um dos termos abaixo, ela deve ser IGNORADA imediatamente (a menos que mencione um concorrente da Etapa 3):
 
-Se mencionar QUALQUER uma dessas empresas, a publicação DEVE ser capturada com section = "CONCORRENTES", INDEPENDENTEMENTE do tipo de publicação, estado ou escopo técnico.
+- EXTRATO DE CONTRATO
+- RESULTADO DE JULGAMENTO
+- HOMOLOGAÇÃO
+- ADJUDICAÇÃO
+- TERMO ADITIVO
+- EXTRATO DE ATA
+- RATIFICAÇÃO
+
+Essas publicações indicam processos já finalizados e NÃO são oportunidades.
+
+═══════════════════════════════════════════
+ETAPA 2 — IDENTIFICAR AVISOS DE LICITAÇÃO
+═══════════════════════════════════════════
+A publicação só deve ser analisada se contiver "AVISO" relacionado a processo de contratação pública (a menos que mencione um concorrente da Etapa 3).
+
+Exemplos:
+- AVISO DE LICITAÇÃO
+- AVISO DE PREGÃO
+- AVISO DE CONCORRÊNCIA
+- AVISO DE DISPENSA
+- AVISO DE INEXIGIBILIDADE
+- AVISO DE CHAMAMENTO PÚBLICO
+- AVISO DE CREDENCIAMENTO
+- AVISO DE ATA DE REGISTRO DE PREÇOS
+- INTENÇÃO DE REGISTRO DE PREÇOS (IRP)
+- AVISO DE ALTERAÇÃO
+- AVISO DE RETIFICAÇÃO
+- AVISO DE REPUBLICAÇÃO
+- AVISO DE SUSPENSÃO
+- AVISO DE REABERTURA DE PRAZO
+- AVISO DE REVOGAÇÃO
+
+═══════════════════════════════════════════
+ETAPA 3 — MONITORAMENTO DE CONCORRENTES (OVERRIDE)
+═══════════════════════════════════════════
+Se a publicação mencionar QUALQUER empresa da lista abaixo, ela DEVE ser capturada com section = "CONCORRENTES", INDEPENDENTEMENTE do tipo de publicação, estado ou escopo técnico. Isso se aplica mesmo que a publicação tenha sido filtrada nas Etapas 1 e 2.
 
 Empresas monitoradas: ${COMPETITORS.join(", ")}
 
 ═══════════════════════════════════════════
-REGRA 2 — IDENTIFICAR AVISOS RELACIONADOS A LICITAÇÃO
+ETAPA 4 — ANÁLISE DO OBJETO DA CONTRATAÇÃO
 ═══════════════════════════════════════════
-Capturar publicações que contenham AVISOS relacionados a processos de contratação pública:
+Para publicações que passaram pelas Etapas 1 e 2 (são avisos de licitação válidos), analise o objeto da contratação. Capture APENAS se relacionado a:
 
-Abertura de processos:
-- Aviso de Licitação
-- Aviso de Pregão
-- Aviso de Concorrência
-- Aviso de Dispensa
-- Aviso de Inexigibilidade
-- Aviso de Chamamento Público
-- Aviso de Credenciamento
-- Aviso de Ata de Registro de Preços
-- Intenção de Registro de Preços (IRP)
+ENGENHARIA E OBRAS: engenharia, obras, reforma, ampliação, adequação predial, retrofit, infraestrutura
 
-Atualização/modificação de processos:
-- Aviso de Alteração
-- Aviso de Retificação
-- Aviso de Republicação
-- Aviso de Suspensão
-- Aviso de Reabertura de Prazo
-- Aviso de Revogação
+MANUTENÇÃO PREDIAL: manutenção predial, manutenção preventiva, manutenção corretiva, facilities técnico
 
-Publicações que NÃO são avisos de licitação (ex: Extratos de Contrato, Resultados de Julgamento, Homologação, Adjudicação, Termo Aditivo) devem ser IGNORADAS, a menos que mencionem concorrentes (Regra 1).
+SISTEMAS PREDIAIS: instalações elétricas, climatização, ar condicionado, automação predial, CFTV, controle de acesso, sistemas de detecção e combate a incêndio
+
+AMBIENTES DE MISSÃO CRÍTICA: data center, datacenter, sala cofre, ambientes de missão crítica, infraestrutura de data center, CPD, centro de dados
+
+ENERGIA: energia solar, sistema fotovoltaico, geração fotovoltaica, geração solar, usina solar
+
+A análise deve ser SEMÂNTICA — considere sinônimos, siglas e variações de grafia (ex: "CPD" = "centro de processamento de dados", "data center" = "datacenter").
+
+Se o objeto NÃO tem relação com essas atividades, IGNORE a publicação.
 
 ═══════════════════════════════════════════
-REGRA 3 — ANALISAR O OBJETO DA CONTRATAÇÃO (FILTRO TÉCNICO)
+ETAPA 5 — IDENTIFICAÇÃO DO ESTADO
 ═══════════════════════════════════════════
-Após identificar um aviso de licitação, leia o campo "Objeto" ou a descrição da contratação.
-Capture APENAS se o objeto estiver relacionado às atividades abaixo:
+Identifique o estado da contratação analisando o texto completo. Considere qualquer município dentro dos estados:
 
-ENGENHARIA E OBRAS:
-engenharia, obras, reforma, ampliação, adequação predial, retrofit, infraestrutura
+SP: Campinas, Santos, São José dos Campos, Ribeirão Preto, Guarulhos, Sorocaba, São Bernardo, Osasco, Bauru, Piracicaba e demais municípios paulistas.
+MG: Belo Horizonte, Uberlândia, Juiz de Fora, Montes Claros, Contagem, Betim e demais municípios mineiros.
+DF: Brasília, Taguatinga, Ceilândia, Gama, Samambaia, Planaltina, Governo do Distrito Federal, Secretarias do GDF.
 
-MANUTENÇÃO PREDIAL:
-manutenção predial, manutenção preventiva, manutenção corretiva, facilities técnico
-
-SISTEMAS PREDIAIS:
-instalações elétricas, climatização, ar condicionado, automação predial, CFTV, controle de acesso, sistemas de detecção e combate a incêndio
-
-AMBIENTES DE MISSÃO CRÍTICA:
-data center, datacenter, sala cofre, ambientes de missão crítica, infraestrutura de data center, infraestrutura crítica de TI, CPD, centro de dados
-
-ENERGIA:
-energia solar, sistema fotovoltaico, geração fotovoltaica, usina solar, implantação de sistema fotovoltaico
-
-Se o objeto NÃO tem relação com essas atividades (ex: vigilância patrimonial, limpeza, alimentação, compra de mobiliário, materiais administrativos), a publicação deve ser IGNORADA.
+Procure padrões: "Cidade/UF", "Cidade-UF", nome do estado por extenso, cidades conhecidas.
 
 ═══════════════════════════════════════════
-REGRA DE SIMILARIDADE SEMÂNTICA
-═══════════════════════════════════════════
-Os termos listados acima são EXEMPLOS de referência. A análise deve ser CONTEXTUAL e SEMÂNTICA.
-
-NÃO dependa apenas de correspondência exata de palavras. Considere:
-- Palavras juntas ou separadas: "data center" = "datacenter" = "data-center"
-- Siglas: "CPD" = "centro de processamento de dados"
-- Sinônimos técnicos: "sistema fotovoltaico" = "energia solar" = "geração solar"
-- Variações de grafia comuns em publicações oficiais
-
-═══════════════════════════════════════════
-REGRA 4 — IDENTIFICAÇÃO DO ESTADO
-═══════════════════════════════════════════
-Após o filtro técnico, identifique o estado da contratação.
-A identificação NÃO deve depender apenas da sigla do estado.
-
-Considere qualquer município, cidade, órgão público ou entidade localizada nesses estados:
-
-SP (São Paulo): Campinas, Santos, São José dos Campos, Ribeirão Preto, Guarulhos, Sorocaba, São Bernardo, Osasco e demais municípios paulistas.
-MG (Minas Gerais): Belo Horizonte, Uberlândia, Juiz de Fora, Montes Claros, Contagem, Betim e demais municípios mineiros.
-DF (Distrito Federal): Brasília, Taguatinga, Ceilândia, Gama, Samambaia, Planaltina, Governo do Distrito Federal, Secretarias do GDF.
-
-Para identificar o estado, analise o TEXTO COMPLETO da publicação procurando:
-- Padrão "Cidade/UF" (ex: "Santos/SP", "Belo Horizonte/MG", "Brasília/DF")
-- Padrão "Cidade-UF" ou "Cidade - UF"
-- Nome do estado por extenso
-- Cidades conhecidas dos estados acima
-
-═══════════════════════════════════════════
-REGRA 5 — CLASSIFICAÇÃO FINAL
+ETAPA 6 — CLASSIFICAÇÃO FINAL
 ═══════════════════════════════════════════
 - SP → section = "SP"
 - MG → section = "MG"
 - DF → section = "DF"
-- Outros estados ou estado não identificado → section = "AVISOS_DIVERSOS"
+- Outro estado → section = "AVISOS_DIVERSOS"
+- Concorrente detectado → section = "CONCORRENTES"
 
 RESULTADO: Para cada publicação capturada, extraia:
-- publication_type: tipo da publicação (ex: "Aviso de Pregão", "Aviso de Licitação")
+- publication_type: tipo da publicação (ex: "Aviso de Pregão", "Extrato de Contrato")
 - organ: órgão publicador
 - object_text: texto do campo "Objeto" (se houver)
 - full_text: texto completo da publicação
@@ -159,7 +147,7 @@ RESULTADO: Para cada publicação capturada, extraia:
           { role: "system", content: systemPrompt },
           {
             role: "user",
-            content: `Analise o seguinte texto extraído do DOU Seção 3 e retorne APENAS as publicações relevantes conforme as regras:\n\n${truncatedText}`,
+            content: `Analise o seguinte texto extraído do DOU Seção 3 e retorne APENAS as publicações relevantes conforme as etapas:\n\n${truncatedText}`,
           },
         ],
         tools: [
@@ -237,18 +225,18 @@ RESULTADO: Para cada publicação capturada, extraia:
     const stateRegex = /[A-Za-zÀ-ÿ\s]+[\/\-–—]\s*(SP|MG|DF|RJ|BA|PR|RS|SC|GO|PE|CE|PA|MA|MT|MS|ES|PB|RN|AL|PI|SE|TO|RO|AC|AP|AM|RR)\b/gi;
     const dfCities = /\b(Bras[íi]lia|Taguatinga|Ceil[âa]ndia|Gama|Samambaia|Planaltina|Governo do Distrito Federal|GDF)\b/gi;
     const spCities = /\b(Campinas|Santos|São José dos Campos|Ribeirão Preto|Guarulhos|Sorocaba|São Bernardo|Osasco|Bauru|Piracicaba|São Carlos|Jundiaí|Mogi das Cruzes)\b/gi;
-    const mgCities = /\b(Belo Horizonte|Uberlândia|Juiz de Fora|Montes Claros|Contagem|Betim|Uberaba|Governador Valadares|Ipatinga|Poços de Caldas)\b/gi;
+    const mgCities = /\b(Belo Horizonte|Uberlândia|Juiz de Fora|Montes Claros|Contagem|Betim|Uberaba|Governador Valadares|Ipatinga|Poços de Caldas|Campo Belo|São José da Lapa)\b/gi;
 
     publications = publications.map((pub: any) => {
       const fullText = (pub.full_text || '') + ' ' + (pub.object_text || '') + ' ' + (pub.organ || '');
 
-      // Priority 1: Competitor check
+      // Priority: Competitor check (overrides everything)
       const compMatch = fullText.match(competitorRegex);
       if (compMatch) {
         return { ...pub, section: 'CONCORRENTES', competitor_match: compMatch[0].toUpperCase(), is_relevant: true };
       }
 
-      // Priority 2: State detection refinement
+      // State detection refinement
       let detectedState: string | null = pub.state || null;
       const stateMatches = fullText.matchAll(stateRegex);
       for (const m of stateMatches) {
@@ -260,23 +248,16 @@ RESULTADO: Para cada publicação capturada, extraia:
         if (!detectedState) detectedState = uf;
       }
 
-      // Check city names for state detection
       if (!detectedState || !['SP', 'MG', 'DF'].includes(detectedState)) {
-        if (dfCities.test(fullText)) {
-          detectedState = 'DF';
-        }
+        if (dfCities.test(fullText)) { detectedState = 'DF'; }
         dfCities.lastIndex = 0;
       }
       if (!detectedState || !['SP', 'MG', 'DF'].includes(detectedState)) {
-        if (spCities.test(fullText)) {
-          detectedState = 'SP';
-        }
+        if (spCities.test(fullText)) { detectedState = 'SP'; }
         spCities.lastIndex = 0;
       }
       if (!detectedState || !['SP', 'MG', 'DF'].includes(detectedState)) {
-        if (mgCities.test(fullText)) {
-          detectedState = 'MG';
-        }
+        if (mgCities.test(fullText)) { detectedState = 'MG'; }
         mgCities.lastIndex = 0;
       }
 
@@ -287,7 +268,6 @@ RESULTADO: Para cada publicação capturada, extraia:
       return { ...pub, state: detectedState, section: 'AVISOS_DIVERSOS' };
     });
 
-    // Filter only relevant
     publications = publications.filter((p: any) => p.is_relevant);
 
     // Insert publications into database
@@ -316,12 +296,10 @@ RESULTADO: Para cada publicação capturada, extraia:
       });
 
       if (!insertRes.ok) {
-        const errText = await insertRes.text();
-        console.error("Insert publications error:", errText);
+        console.error("Insert publications error:", await insertRes.text());
       }
     }
 
-    // Update reading stats
     const opportunities = publications.filter(
       (p: any) => ["SP", "MG", "DF", "AVISOS_DIVERSOS"].includes(p.section)
     ).length;
