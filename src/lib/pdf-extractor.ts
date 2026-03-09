@@ -1,6 +1,5 @@
-// Use Vite's ?url import to get the correct worker path from the installed package
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import * as pdfjsLib from 'pdfjs-dist';
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
