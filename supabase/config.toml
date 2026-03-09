@@ -1,0 +1,4 @@
+project_id = "czvirsxmnsuvykdcyzko"
+
+[functions.process-dou]
+verify_jwt = false
