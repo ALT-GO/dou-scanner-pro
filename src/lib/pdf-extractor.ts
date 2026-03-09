@@ -1,7 +1,8 @@
+// Use Vite's ?url import to get the correct worker path from the installed package
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Hardcode worker URL to match the exact installed version (3.11.174)
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 export async function extractTextFromPDF(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
