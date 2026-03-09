@@ -9,12 +9,15 @@ const COMPETITORS = [
   "ORION ENGENHARIA",
   "EQS",
   "GREEN4T",
+  "GLS",
+  "VIRTUAL",
   "GEMELO",
+  "CETEST",
   "KOERICH",
-  "VIA ENGENHARIA",
+  "MPE",
   "ATLÂNTICO ENGENHARIA",
   "ACECO",
-  "GLS",
+  "VIA ENGENHARIA",
 ];
 
 serve(async (req) => {
