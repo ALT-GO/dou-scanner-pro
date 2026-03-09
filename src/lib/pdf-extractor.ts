@@ -1,16 +1,10 @@
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Disable worker to avoid version mismatch issues - uses main thread instead
-pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
 export async function extractTextFromPDF(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({
-    data: arrayBuffer,
-    useWorkerFetch: false,
-    isEvalSupported: false,
-    useSystemFonts: true,
-  }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
   let fullText = '';
 
