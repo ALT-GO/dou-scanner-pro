@@ -7,16 +7,16 @@ const corsHeaders = {
 
 const COMPETITORS = [
   "ORION ENGENHARIA",
-  "EQS",
+  "EQS ENGENHARIA",
   "GREEN4T",
   "GLS",
-  "VIRTUAL",
   "GEMELO",
   "CETEST",
-  "KOERICH",
-  "MPE",
-  "ATLÂNTICO ENGENHARIA",
   "ACECO",
+  "KOERICH ENGENHARIA",
+  "MPE ENGENHARIA",
+  "ATLÂNTICO ENGENHARIA",
+  "VIRTUAL ENGENHARIA",
   "VIA ENGENHARIA",
 ];
 
@@ -38,19 +38,23 @@ serve(async (req) => {
 
     const systemPrompt = `Você é um especialista em análise de publicações do Diário Oficial da União (DOU) - Seção 3.
 
-Sua tarefa é analisar o texto extraído do DOU Seção 3 e identificar publicações relevantes seguindo RIGOROSAMENTE as regras abaixo, na ordem de prioridade indicada.
+O arquivo enviado já corresponde à Seção 3, portanto você NÃO precisa identificar a seção do documento. Apenas interprete corretamente o conteúdo das publicações.
+
+Sua tarefa é analisar o texto e identificar publicações relevantes seguindo RIGOROSAMENTE as regras abaixo, na ordem de prioridade indicada.
 
 ═══════════════════════════════════════════
-REGRA 1 — MONITORAMENTO DE CONCORRENTES (PRIORIDADE MÁXIMA)
+REGRA 1 — MONITORAMENTO DE CONCORRENTES / ORION (PRIORIDADE MÁXIMA)
 ═══════════════════════════════════════════
-Se a publicação mencionar QUALQUER empresa da lista abaixo em QUALQUER parte do texto, ela DEVE ser capturada com section = "CONCORRENTES", INDEPENDENTEMENTE do tipo de publicação, estado ou escopo técnico.
+Antes de qualquer outro filtro, verifique se a publicação menciona alguma empresa da lista abaixo em QUALQUER parte do texto.
+
+Se mencionar QUALQUER uma dessas empresas, a publicação DEVE ser capturada com section = "CONCORRENTES", INDEPENDENTEMENTE do tipo de publicação, estado ou escopo técnico.
 
 Empresas monitoradas: ${COMPETITORS.join(", ")}
 
 ═══════════════════════════════════════════
 REGRA 2 — IDENTIFICAR AVISOS RELACIONADOS A LICITAÇÃO
 ═══════════════════════════════════════════
-Capturar publicações que contenham "AVISO" relacionado a processos de contratação pública:
+Capturar publicações que contenham AVISOS relacionados a processos de contratação pública:
 
 Abertura de processos:
 - Aviso de Licitação
@@ -71,12 +75,12 @@ Atualização/modificação de processos:
 - Aviso de Reabertura de Prazo
 - Aviso de Revogação
 
-Publicações que NÃO são avisos de licitação (ex: Extratos de Contrato, Resultados de Julgamento) devem ser IGNORADAS, a menos que mencionem concorrentes (Regra 1).
+Publicações que NÃO são avisos de licitação (ex: Extratos de Contrato, Resultados de Julgamento, Homologação, Adjudicação, Termo Aditivo) devem ser IGNORADAS, a menos que mencionem concorrentes (Regra 1).
 
 ═══════════════════════════════════════════
 REGRA 3 — ANALISAR O OBJETO DA CONTRATAÇÃO (FILTRO TÉCNICO)
 ═══════════════════════════════════════════
-Após identificar um aviso de licitação, leia o campo "Objeto" ou a descrição da contratação. 
+Após identificar um aviso de licitação, leia o campo "Objeto" ou a descrição da contratação.
 Capture APENAS se o objeto estiver relacionado às atividades abaixo:
 
 ENGENHARIA E OBRAS:
@@ -97,30 +101,41 @@ energia solar, sistema fotovoltaico, geração fotovoltaica, usina solar, implan
 Se o objeto NÃO tem relação com essas atividades (ex: vigilância patrimonial, limpeza, alimentação, compra de mobiliário, materiais administrativos), a publicação deve ser IGNORADA.
 
 ═══════════════════════════════════════════
-REGRA 4 — CLASSIFICAÇÃO POR ESTADO
+REGRA DE SIMILARIDADE SEMÂNTICA
 ═══════════════════════════════════════════
-Se a publicação passou pelo filtro técnico, classifique por estado:
-- SP → section = "SP"
-- MG → section = "MG"
-- DF → section = "DF"
-- Outros estados ou estado não identificado → section = "AVISOS_DIVERSOS"
-
-Para identificar o estado, analise o TEXTO COMPLETO da publicação procurando:
-- Padrão "Cidade/UF" (ex: "Santos/SP", "Belo Horizonte/MG", "Brasília/DF")
-- Padrão "Cidade-UF" ou "Cidade - UF"
-- Nome do estado por extenso
-- Cidades conhecidas (ex: Guarulhos→SP, Uberlândia→MG, Taguatinga→DF)
-
-═══════════════════════════════════════════
-REGRA 5 — INTERPRETAÇÃO SEMÂNTICA
-═══════════════════════════════════════════
-Os termos listados nas atividades são EXEMPLOS de referência. A análise deve ser CONTEXTUAL e SEMÂNTICA.
+Os termos listados acima são EXEMPLOS de referência. A análise deve ser CONTEXTUAL e SEMÂNTICA.
 
 NÃO dependa apenas de correspondência exata de palavras. Considere:
 - Palavras juntas ou separadas: "data center" = "datacenter" = "data-center"
 - Siglas: "CPD" = "centro de processamento de dados"
 - Sinônimos técnicos: "sistema fotovoltaico" = "energia solar" = "geração solar"
 - Variações de grafia comuns em publicações oficiais
+
+═══════════════════════════════════════════
+REGRA 4 — IDENTIFICAÇÃO DO ESTADO
+═══════════════════════════════════════════
+Após o filtro técnico, identifique o estado da contratação.
+A identificação NÃO deve depender apenas da sigla do estado.
+
+Considere qualquer município, cidade, órgão público ou entidade localizada nesses estados:
+
+SP (São Paulo): Campinas, Santos, São José dos Campos, Ribeirão Preto, Guarulhos, Sorocaba, São Bernardo, Osasco e demais municípios paulistas.
+MG (Minas Gerais): Belo Horizonte, Uberlândia, Juiz de Fora, Montes Claros, Contagem, Betim e demais municípios mineiros.
+DF (Distrito Federal): Brasília, Taguatinga, Ceilândia, Gama, Samambaia, Planaltina, Governo do Distrito Federal, Secretarias do GDF.
+
+Para identificar o estado, analise o TEXTO COMPLETO da publicação procurando:
+- Padrão "Cidade/UF" (ex: "Santos/SP", "Belo Horizonte/MG", "Brasília/DF")
+- Padrão "Cidade-UF" ou "Cidade - UF"
+- Nome do estado por extenso
+- Cidades conhecidas dos estados acima
+
+═══════════════════════════════════════════
+REGRA 5 — CLASSIFICAÇÃO FINAL
+═══════════════════════════════════════════
+- SP → section = "SP"
+- MG → section = "MG"
+- DF → section = "DF"
+- Outros estados ou estado não identificado → section = "AVISOS_DIVERSOS"
 
 RESULTADO: Para cada publicação capturada, extraia:
 - publication_type: tipo da publicação (ex: "Aviso de Pregão", "Aviso de Licitação")
@@ -220,7 +235,9 @@ RESULTADO: Para cada publicação capturada, extraia:
     const competitorRegex = new RegExp(`(${competitorPatterns.join('|')})`, 'gi');
 
     const stateRegex = /[A-Za-zÀ-ÿ\s]+[\/\-–—]\s*(SP|MG|DF|RJ|BA|PR|RS|SC|GO|PE|CE|PA|MA|MT|MS|ES|PB|RN|AL|PI|SE|TO|RO|AC|AP|AM|RR)\b/gi;
-    const dfCities = /\b(Bras[íi]lia|Taguatinga|Ceil[âa]ndia|Gama|Samambaia|Planaltina)\b/gi;
+    const dfCities = /\b(Bras[íi]lia|Taguatinga|Ceil[âa]ndia|Gama|Samambaia|Planaltina|Governo do Distrito Federal|GDF)\b/gi;
+    const spCities = /\b(Campinas|Santos|São José dos Campos|Ribeirão Preto|Guarulhos|Sorocaba|São Bernardo|Osasco|Bauru|Piracicaba|São Carlos|Jundiaí|Mogi das Cruzes)\b/gi;
+    const mgCities = /\b(Belo Horizonte|Uberlândia|Juiz de Fora|Montes Claros|Contagem|Betim|Uberaba|Governador Valadares|Ipatinga|Poços de Caldas)\b/gi;
 
     publications = publications.map((pub: any) => {
       const fullText = (pub.full_text || '') + ' ' + (pub.object_text || '') + ' ' + (pub.organ || '');
@@ -243,11 +260,24 @@ RESULTADO: Para cada publicação capturada, extraia:
         if (!detectedState) detectedState = uf;
       }
 
+      // Check city names for state detection
       if (!detectedState || !['SP', 'MG', 'DF'].includes(detectedState)) {
         if (dfCities.test(fullText)) {
           detectedState = 'DF';
         }
         dfCities.lastIndex = 0;
+      }
+      if (!detectedState || !['SP', 'MG', 'DF'].includes(detectedState)) {
+        if (spCities.test(fullText)) {
+          detectedState = 'SP';
+        }
+        spCities.lastIndex = 0;
+      }
+      if (!detectedState || !['SP', 'MG', 'DF'].includes(detectedState)) {
+        if (mgCities.test(fullText)) {
+          detectedState = 'MG';
+        }
+        mgCities.lastIndex = 0;
       }
 
       if (detectedState && ['SP', 'MG', 'DF'].includes(detectedState)) {
