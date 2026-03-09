@@ -33,77 +33,103 @@ serve(async (req) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // Truncate text if too long - split into chunks for processing
     const maxChars = 80000;
     const truncatedText = text.length > maxChars ? text.substring(0, maxChars) : text;
 
     const systemPrompt = `Você é um especialista em análise de publicações do Diário Oficial da União (DOU) - Seção 3.
 
-Sua tarefa é analisar o texto extraído do DOU Seção 3 e identificar cada publicação individual relacionada a processos licitatórios.
+Sua tarefa é analisar o texto extraído do DOU Seção 3 e identificar publicações relevantes seguindo RIGOROSAMENTE as regras abaixo, na ordem de prioridade indicada.
 
-TIPOS DE PUBLICAÇÃO A IDENTIFICAR:
+═══════════════════════════════════════════
+REGRA 1 — MONITORAMENTO DE CONCORRENTES (PRIORIDADE MÁXIMA)
+═══════════════════════════════════════════
+Se a publicação mencionar QUALQUER empresa da lista abaixo em QUALQUER parte do texto, ela DEVE ser capturada com section = "CONCORRENTES", INDEPENDENTEMENTE do tipo de publicação, estado ou escopo técnico.
+
+Empresas monitoradas: ${COMPETITORS.join(", ")}
+
+═══════════════════════════════════════════
+REGRA 2 — IDENTIFICAR AVISOS RELACIONADOS A LICITAÇÃO
+═══════════════════════════════════════════
+Capturar publicações que contenham "AVISO" relacionado a processos de contratação pública:
+
+Abertura de processos:
 - Aviso de Licitação
 - Aviso de Pregão
 - Aviso de Concorrência
-- Aviso de Registro de Preços
-- Aviso de Suspensão
+- Aviso de Dispensa
+- Aviso de Inexigibilidade
+- Aviso de Chamamento Público
+- Aviso de Credenciamento
+- Aviso de Ata de Registro de Preços
+- Intenção de Registro de Preços (IRP)
+
+Atualização/modificação de processos:
 - Aviso de Alteração
-- Extrato de Dispensa de Licitação
-- Extrato de Contrato
-- Resultado de Julgamento
-- Outros avisos relacionados a licitações
+- Aviso de Retificação
+- Aviso de Republicação
+- Aviso de Suspensão
+- Aviso de Reabertura de Prazo
+- Aviso de Revogação
 
-ESCOPO DA EMPRESA (para avaliar relevância):
-A empresa atua em:
-- manutenção predial e industrial
-- retrofits prediais e industriais
-- sistemas de segurança eletrônica
-- ambientes de missão crítica (datacenters, salas técnicas, hospitais)
-- eficiência predial (energia fotovoltaica, esgoto a vácuo, automação)
-- gestão contínua de infraestrutura
-- soluções IoT para monitoramento de energia, água, gás e climatização
-- serviços de engenharia civil, elétrica, mecânica relacionados
+Publicações que NÃO são avisos de licitação (ex: Extratos de Contrato, Resultados de Julgamento) devem ser IGNORADAS, a menos que mencionem concorrentes (Regra 1).
 
-CONCORRENTES A MONITORAR: ${COMPETITORS.join(", ")}
+═══════════════════════════════════════════
+REGRA 3 — ANALISAR O OBJETO DA CONTRATAÇÃO (FILTRO TÉCNICO)
+═══════════════════════════════════════════
+Após identificar um aviso de licitação, leia o campo "Objeto" ou a descrição da contratação. 
+Capture APENAS se o objeto estiver relacionado às atividades abaixo:
 
-REGRAS DE IDENTIFICAÇÃO DE ESTADO (MUITO IMPORTANTE - SIGA RIGOROSAMENTE):
-Você DEVE analisar o TEXTO COMPLETO de cada publicação (não apenas o campo Objeto) para identificar o estado.
+ENGENHARIA E OBRAS:
+engenharia, obras, reforma, ampliação, adequação predial, retrofit, infraestrutura
 
-Procure padrões de localização como:
-- "Cidade/UF" → Ex: "Santos/SP", "Belo Horizonte/MG", "Brasília/DF", "Campinas/SP"
-- "Cidade-UF" → Ex: "Campo Belo-MG"
-- "Cidade - UF" → Ex: "Campo Belo - MG"
-- Menções ao nome do estado por extenso: "São Paulo", "Minas Gerais", "Distrito Federal"
-- Menções a cidades conhecidas desses estados (ex: Guarulhos, Uberlândia, Taguatinga)
-- Endereços que contenham cidade e UF
+MANUTENÇÃO PREDIAL:
+manutenção predial, manutenção preventiva, manutenção corretiva, facilities técnico
 
-Se encontrar cidade/estado de SP → state = "SP"
-Se encontrar cidade/estado de MG → state = "MG"  
-Se encontrar cidade/estado de DF → state = "DF"
-Se encontrar outro estado → state = a UF encontrada (ex: "RJ", "BA", etc.)
+SISTEMAS PREDIAIS:
+instalações elétricas, climatização, ar condicionado, automação predial, CFTV, controle de acesso, sistemas de detecção e combate a incêndio
 
-REGRAS DE CLASSIFICAÇÃO (APLIQUE NESTA ORDEM DE PRIORIDADE):
+AMBIENTES DE MISSÃO CRÍTICA:
+data center, datacenter, sala cofre, ambientes de missão crítica, infraestrutura de data center, infraestrutura crítica de TI, CPD, centro de dados
 
-1. PRIMEIRO: Verifique se a publicação menciona qualquer empresa da lista de concorrentes ou ORION ENGENHARIA em QUALQUER parte do texto. Se sim → section = "CONCORRENTES" (independente do estado).
+ENERGIA:
+energia solar, sistema fotovoltaico, geração fotovoltaica, usina solar, implantação de sistema fotovoltaico
 
-2. SEGUNDO: Se a publicação é relevante ao escopo da empresa E o estado identificado é SP → section = "SP"
-   Se a publicação é relevante ao escopo da empresa E o estado identificado é MG → section = "MG"
-   Se a publicação é relevante ao escopo da empresa E o estado identificado é DF → section = "DF"
+Se o objeto NÃO tem relação com essas atividades (ex: vigilância patrimonial, limpeza, alimentação, compra de mobiliário, materiais administrativos), a publicação deve ser IGNORADA.
 
-3. TERCEIRO: Se a publicação é relevante ao escopo mas NÃO foi possível identificar o estado, OU o estado é diferente de SP/MG/DF → section = "AVISOS_DIVERSOS"
+═══════════════════════════════════════════
+REGRA 4 — CLASSIFICAÇÃO POR ESTADO
+═══════════════════════════════════════════
+Se a publicação passou pelo filtro técnico, classifique por estado:
+- SP → section = "SP"
+- MG → section = "MG"
+- DF → section = "DF"
+- Outros estados ou estado não identificado → section = "AVISOS_DIVERSOS"
 
-4. Publicações NÃO relevantes ao escopo da empresa devem ser IGNORADAS (não inclua no resultado).
+Para identificar o estado, analise o TEXTO COMPLETO da publicação procurando:
+- Padrão "Cidade/UF" (ex: "Santos/SP", "Belo Horizonte/MG", "Brasília/DF")
+- Padrão "Cidade-UF" ou "Cidade - UF"
+- Nome do estado por extenso
+- Cidades conhecidas (ex: Guarulhos→SP, Uberlândia→MG, Taguatinga→DF)
 
-ATENÇÃO: Não classifique como AVISOS_DIVERSOS se o estado está claramente indicado no texto como SP, MG ou DF. Leia o texto completo com atenção.
+═══════════════════════════════════════════
+REGRA 5 — INTERPRETAÇÃO SEMÂNTICA
+═══════════════════════════════════════════
+Os termos listados nas atividades são EXEMPLOS de referência. A análise deve ser CONTEXTUAL e SEMÂNTICA.
 
-Para cada publicação, extraia:
-- publication_type: tipo da publicação
+NÃO dependa apenas de correspondência exata de palavras. Considere:
+- Palavras juntas ou separadas: "data center" = "datacenter" = "data-center"
+- Siglas: "CPD" = "centro de processamento de dados"
+- Sinônimos técnicos: "sistema fotovoltaico" = "energia solar" = "geração solar"
+- Variações de grafia comuns em publicações oficiais
+
+RESULTADO: Para cada publicação capturada, extraia:
+- publication_type: tipo da publicação (ex: "Aviso de Pregão", "Aviso de Licitação")
 - organ: órgão publicador
 - object_text: texto do campo "Objeto" (se houver)
 - full_text: texto completo da publicação
 - state: UF identificada (se houver)
-- is_relevant: se é relevante ao escopo da empresa
-- competitor_match: nome do concorrente encontrado (se houver)
+- is_relevant: true (só retorne publicações relevantes)
+- competitor_match: nome do concorrente encontrado (se houver, senão null)
 - section: classificação (SP, MG, DF, CONCORRENTES, AVISOS_DIVERSOS)`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -113,12 +139,12 @@ Para cada publicação, extraia:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
           {
             role: "user",
-            content: `Analise o seguinte texto extraído do DOU Seção 3 e retorne as publicações identificadas:\n\n${truncatedText}`,
+            content: `Analise o seguinte texto extraído do DOU Seção 3 e retorne APENAS as publicações relevantes conforme as regras:\n\n${truncatedText}`,
           },
         ],
         tools: [
@@ -126,7 +152,7 @@ Para cada publicação, extraia:
             type: "function",
             function: {
               name: "classify_publications",
-              description: "Classifica e retorna todas as publicações identificadas no DOU Seção 3",
+              description: "Retorna as publicações relevantes identificadas no DOU Seção 3",
               parameters: {
                 type: "object",
                 properties: {
@@ -182,32 +208,32 @@ Para cada publicação, extraia:
 
     const aiResult = await response.json();
     const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
-    
+
     let publications: any[] = [];
     if (toolCall?.function?.arguments) {
       const parsed = JSON.parse(toolCall.function.arguments);
       publications = parsed.publications || [];
     }
 
-    // Post-process: override classification using regex-based detection
-    const stateRegex = /[A-Za-zÀ-ÿ\s]+[\/\-–—]\s*(SP|MG|DF|RJ|BA|PR|RS|SC|GO|PE|CE|PA|MA|MT|MS|ES|PB|RN|AL|PI|SE|TO|RO|AC|AP|AM|RR)\b/gi;
-    const cityStateRegex = /\b(Bras[íi]lia|Taguatinga|Ceil[âa]ndia|Gama|Samambaia|Planaltina)\b/gi;
-    
+    // Post-process: enforce competitor detection with regex
     const competitorPatterns = COMPETITORS.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     const competitorRegex = new RegExp(`(${competitorPatterns.join('|')})`, 'gi');
 
+    const stateRegex = /[A-Za-zÀ-ÿ\s]+[\/\-–—]\s*(SP|MG|DF|RJ|BA|PR|RS|SC|GO|PE|CE|PA|MA|MT|MS|ES|PB|RN|AL|PI|SE|TO|RO|AC|AP|AM|RR)\b/gi;
+    const dfCities = /\b(Bras[íi]lia|Taguatinga|Ceil[âa]ndia|Gama|Samambaia|Planaltina)\b/gi;
+
     publications = publications.map((pub: any) => {
-      const text = (pub.full_text || '') + ' ' + (pub.object_text || '') + ' ' + (pub.organ || '');
-      
-      // 1. Check competitors first (highest priority)
-      const compMatch = text.match(competitorRegex);
+      const fullText = (pub.full_text || '') + ' ' + (pub.object_text || '') + ' ' + (pub.organ || '');
+
+      // Priority 1: Competitor check
+      const compMatch = fullText.match(competitorRegex);
       if (compMatch) {
-        return { ...pub, section: 'CONCORRENTES', competitor_match: compMatch[0].toUpperCase() };
+        return { ...pub, section: 'CONCORRENTES', competitor_match: compMatch[0].toUpperCase(), is_relevant: true };
       }
 
-      // 2. Detect state from text using regex
+      // Priority 2: State detection refinement
       let detectedState: string | null = pub.state || null;
-      const stateMatches = text.matchAll(stateRegex);
+      const stateMatches = fullText.matchAll(stateRegex);
       for (const m of stateMatches) {
         const uf = m[1].toUpperCase();
         if (['SP', 'MG', 'DF'].includes(uf)) {
@@ -217,26 +243,22 @@ Para cada publicação, extraia:
         if (!detectedState) detectedState = uf;
       }
 
-      // Check DF cities
       if (!detectedState || !['SP', 'MG', 'DF'].includes(detectedState)) {
-        if (cityStateRegex.test(text)) {
+        if (dfCities.test(fullText)) {
           detectedState = 'DF';
         }
-        cityStateRegex.lastIndex = 0;
+        dfCities.lastIndex = 0;
       }
 
-      // 3. Assign section based on detected state
-      if (detectedState && ['SP', 'MG', 'DF'].includes(detectedState) && pub.is_relevant) {
+      if (detectedState && ['SP', 'MG', 'DF'].includes(detectedState)) {
         return { ...pub, state: detectedState, section: detectedState };
       }
 
-      // 4. Relevant but no target state → AVISOS_DIVERSOS
-      if (pub.is_relevant) {
-        return { ...pub, state: detectedState, section: 'AVISOS_DIVERSOS' };
-      }
-
-      return pub;
+      return { ...pub, state: detectedState, section: 'AVISOS_DIVERSOS' };
     });
+
+    // Filter only relevant
+    publications = publications.filter((p: any) => p.is_relevant);
 
     // Insert publications into database
     if (publications.length > 0) {
@@ -248,7 +270,7 @@ Para cada publicação, extraia:
         object_text: pub.object_text || null,
         full_text: pub.full_text || "",
         state: pub.state || null,
-        is_relevant: pub.is_relevant ?? false,
+        is_relevant: pub.is_relevant ?? true,
         competitor_match: pub.competitor_match || null,
       }));
 
@@ -271,7 +293,7 @@ Para cada publicação, extraia:
 
     // Update reading stats
     const opportunities = publications.filter(
-      (p: any) => ["SP", "MG", "DF", "AVISOS_DIVERSOS"].includes(p.section) && p.is_relevant
+      (p: any) => ["SP", "MG", "DF", "AVISOS_DIVERSOS"].includes(p.section)
     ).length;
     const competitorMentions = publications.filter(
       (p: any) => p.section === "CONCORRENTES"
