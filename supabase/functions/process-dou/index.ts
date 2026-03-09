@@ -9,12 +9,15 @@ const COMPETITORS = [
   "ORION ENGENHARIA",
   "EQS",
   "GREEN4T",
+  "GLS",
+  "VIRTUAL",
   "GEMELO",
+  "CETEST",
   "KOERICH",
-  "VIA ENGENHARIA",
+  "MPE",
   "ATLÂNTICO ENGENHARIA",
   "ACECO",
-  "GLS",
+  "VIA ENGENHARIA",
 ];
 
 serve(async (req) => {
@@ -63,11 +66,35 @@ A empresa atua em:
 
 CONCORRENTES A MONITORAR: ${COMPETITORS.join(", ")}
 
-REGRAS DE CLASSIFICAÇÃO:
-1. Publicações de SP, MG ou DF que sejam relevantes ao escopo → section = estado correspondente (SP, MG, DF)
-2. Publicações que mencionem qualquer concorrente ou ORION ENGENHARIA → section = "CONCORRENTES" (independente do estado)
-3. Publicações relevantes mas sem estado/município claro → section = "AVISOS_DIVERSOS"
-4. Publicações não relevantes ao escopo da empresa devem ser ignoradas
+REGRAS DE IDENTIFICAÇÃO DE ESTADO (MUITO IMPORTANTE - SIGA RIGOROSAMENTE):
+Você DEVE analisar o TEXTO COMPLETO de cada publicação (não apenas o campo Objeto) para identificar o estado.
+
+Procure padrões de localização como:
+- "Cidade/UF" → Ex: "Santos/SP", "Belo Horizonte/MG", "Brasília/DF", "Campinas/SP"
+- "Cidade-UF" → Ex: "Campo Belo-MG"
+- "Cidade - UF" → Ex: "Campo Belo - MG"
+- Menções ao nome do estado por extenso: "São Paulo", "Minas Gerais", "Distrito Federal"
+- Menções a cidades conhecidas desses estados (ex: Guarulhos, Uberlândia, Taguatinga)
+- Endereços que contenham cidade e UF
+
+Se encontrar cidade/estado de SP → state = "SP"
+Se encontrar cidade/estado de MG → state = "MG"  
+Se encontrar cidade/estado de DF → state = "DF"
+Se encontrar outro estado → state = a UF encontrada (ex: "RJ", "BA", etc.)
+
+REGRAS DE CLASSIFICAÇÃO (APLIQUE NESTA ORDEM DE PRIORIDADE):
+
+1. PRIMEIRO: Verifique se a publicação menciona qualquer empresa da lista de concorrentes ou ORION ENGENHARIA em QUALQUER parte do texto. Se sim → section = "CONCORRENTES" (independente do estado).
+
+2. SEGUNDO: Se a publicação é relevante ao escopo da empresa E o estado identificado é SP → section = "SP"
+   Se a publicação é relevante ao escopo da empresa E o estado identificado é MG → section = "MG"
+   Se a publicação é relevante ao escopo da empresa E o estado identificado é DF → section = "DF"
+
+3. TERCEIRO: Se a publicação é relevante ao escopo mas NÃO foi possível identificar o estado, OU o estado é diferente de SP/MG/DF → section = "AVISOS_DIVERSOS"
+
+4. Publicações NÃO relevantes ao escopo da empresa devem ser IGNORADAS (não inclua no resultado).
+
+ATENÇÃO: Não classifique como AVISOS_DIVERSOS se o estado está claramente indicado no texto como SP, MG ou DF. Leia o texto completo com atenção.
 
 Para cada publicação, extraia:
 - publication_type: tipo da publicação
