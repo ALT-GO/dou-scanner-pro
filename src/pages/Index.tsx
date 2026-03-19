@@ -60,7 +60,7 @@ export default function Index() {
     const { data, error } = await supabase
       .from('dou_readings')
       .select('*')
-      .order('reading_date', { ascending: false });
+      .order('created_at', { ascending: false });
     if (error) {
       console.error('Error fetching readings:', error);
       return;
