@@ -49,7 +49,7 @@ export function ProcessingLog({ logs, visible }: ProcessingLogProps) {
           {logs.length} {logs.length === 1 ? 'entrada' : 'entradas'}
         </span>
       </div>
-      <ScrollArea className="h-[280px]">
+      <ScrollArea className="h-[280px]" ref={scrollContainerRef}>
         <div className="p-3 space-y-1 font-mono text-xs">
           {logs.map((entry) => {
             const config = levelConfig[entry.level];
