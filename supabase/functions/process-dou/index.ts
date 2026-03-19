@@ -224,7 +224,7 @@ const SP_CITIES = [
   'Jaú', 'Lençóis Paulista', 'Itu', 'Salto', 'Votorantim',
   'Carapicuíba', 'Itapecerica da Serra', 'Franco da Rocha', 'Caieiras',
   'Itapevi', 'Santana de Parnaíba', 'Guaratinguetá', 'Lorena',
-  'Cruzeiro', 'Pindamonhangaba', 'Caraguatatuba', 'São Sebastião',
+  'Pindamonhangaba', 'Caraguatatuba',
   'Ubatuba', 'Ilhabela', 'Mogi Guaçu', 'Mogi Mirim', 'Amparo',
   'Valinhos', 'Vinhedo', 'Itatiba', 'Campo Limpo Paulista',
   'Várzea Paulista', 'Lins', 'Tupã', 'Adamantina', 'Dracena',
