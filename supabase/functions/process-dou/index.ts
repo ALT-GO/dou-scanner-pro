@@ -449,10 +449,9 @@ Para CADA bloco, extraia:
 - organ: nome do órgão publicador
 - object_text: texto do campo "Objeto" da contratação
 - city: cidade identificada
-- state: UF (SP, MG, DF, PE, etc.)
+- estado_execucao: UF de 2 letras onde o serviço/obra será EXECUTADO (ex: SP, BA, PR, MG, DF). Baseie-se UNICAMENTE no local de execução do serviço ou sede da prefeitura demandante. IGNORE siglas no nome do órgão (ex: "CESUP - SP" não significa que é SP).
 - is_relevant: true SOMENTE se for uma publicação válida com escopo técnico compatível
 - competitor_match: nome do concorrente encontrado ou null
-- section: classificação ("SP", "MG", "DF", "CONCORRENTES", "AVISOS_DIVERSOS")
 
 NÃO retorne o campo full_text. Use o block_id para referenciar o bloco original.
 
@@ -574,12 +573,11 @@ serve(async (req) => {
                               organ: { type: "string" },
                               object_text: { type: "string" },
                               city: { type: "string" },
-                              state: { type: "string" },
+                              estado_execucao: { type: "string", description: "UF de 2 letras onde o serviço/obra será executado (ex: SP, BA, PR, MG, DF). Baseie-se APENAS no local de execução, NUNCA em siglas no nome do órgão." },
                               is_relevant: { type: "boolean" },
                               competitor_match: { type: "string" },
-                              section: { type: "string", enum: ["SP", "MG", "DF", "CONCORRENTES", "AVISOS_DIVERSOS"] },
                             },
-                            required: ["block_id", "publication_type", "organ", "section", "is_relevant"],
+                            required: ["block_id", "publication_type", "organ", "estado_execucao", "is_relevant"],
                             additionalProperties: false,
                           },
                         },
@@ -648,14 +646,23 @@ serve(async (req) => {
         console.log(`${failedBatches}/${batches.length} batches failed — proceeding with ${batches.length - failedBatches} successful`);
       }
 
-      // Flatten and reconstruct full_text from block_id
+      // Flatten, reconstruct full_text, and derive section from estado_execucao in CODE
       const rawAiPubs = successfulResults.flat();
       const blockMap = new Map(blocksWithId.map(b => [b.id, b.text]));
-      aiPublications = rawAiPubs.map((pub: any) => ({
-        ...pub,
-        full_text: blockMap.get(pub.block_id) || '',
-      }));
-      console.log(`Reconstructed full_text for ${aiPublications.length} publications from block IDs`);
+      aiPublications = rawAiPubs.map((pub: any) => {
+        const uf = (pub.estado_execucao || '').toUpperCase().trim();
+        let section = "AVISOS_DIVERSOS";
+        if (uf === "SP" || uf === "MG" || uf === "DF") {
+          section = uf;
+        }
+        return {
+          ...pub,
+          state: uf || null,
+          section,
+          full_text: blockMap.get(pub.block_id) || '',
+        };
+      });
+      console.log(`Reconstructed full_text for ${aiPublications.length} publications from block IDs (section derived from estado_execucao in code)`);
     }
 
     // ── STEP 3: Post-process ──
