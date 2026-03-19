@@ -10,11 +10,16 @@ const corsHeaders = {
 // ═══════════════════════════════════════════════════
 
 const COMPETITORS = [
-  "ORION", "ORION ENGENHARIA", "ORION ENGENHARIA E TECNOLOGIA",
-  "GREEN4T", "GLS ENGENHARIA", "GLS", "VIRTUAL ENGENHARIA", "VIRTUAL",
-  "GEMELO", "CETEST", "KOERICH", "KOERICH ENGENHARIA",
-  "MPE ENGENHARIA", "MPE ENGENHARIA E SERVICOS", "EQS", "EQS ENGENHARIA",
-  "ACECO", "ACECO TI", "ATLÂNTICO ENGENHARIA", "VIA ENGENHARIA",
+  "ORION ENGENHARIA E TECNOLOGIA", "ORION ENGENHARIA", "GRUPO ORION",
+  "GREEN4T",
+  "GLS ENGENHARIA",
+  "VIRTUAL ENGENHARIA",
+  "GEMELO", "CETEST",
+  "KOERICH ENGENHARIA", "KOERICH",
+  "MPE ENGENHARIA E SERVICOS", "MPE ENGENHARIA",
+  "EQS ENGENHARIA",
+  "ACECO TI", "ACECO",
+  "ATLÂNTICO ENGENHARIA", "VIA ENGENHARIA",
 ];
 
 const BLACKLIST_TERMS = [
@@ -95,8 +100,9 @@ function isSummaryOrHeader(text: string): boolean {
 }
 
 function buildCompetitorRegex(): RegExp {
-  const patterns = COMPETITORS.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  return new RegExp(`(${patterns.join('|')})`, 'gi');
+  const sorted = [...COMPETITORS].sort((a, b) => b.length - a.length);
+  const patterns = sorted.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(`\\b(${patterns.join('|')})\\b`, 'gi');
 }
 
 function buildTechnicalRegex(): RegExp {
@@ -185,6 +191,9 @@ function preFilterText(text: string): PreFilterResult {
     // REGRA 0: Discard summary, index and header blocks immediately
     if (isSummaryOrHeader(block)) { discarded++; continue; }
 
+    // REGRA 0.5 (SOBERANA): Blacklist tem prioridade ABSOLUTA — antes de tudo
+    if (containsBlacklist(block)) { discarded++; continue; }
+
     // RULE 1: Competitor match — push to relevantBlocks (AI will extract organ/object)
     if (matchesCompetitor(block)) {
       relevantBlocks.push(block);
@@ -192,8 +201,7 @@ function preFilterText(text: string): PreFilterResult {
       continue;
     }
 
-    // RULE 2: Must not be blacklisted AND must contain a valid notice type
-    if (containsBlacklist(block)) { discarded++; continue; }
+    // RULE 2: Must contain a valid notice type
     if (!containsNoticeType(block)) { discarded++; continue; }
 
     // RULE 3: Must match technical scope keywords
@@ -451,6 +459,12 @@ REGRAS DE CLASSIFICAÇÃO GEOGRÁFICA (RIGOROSAS):
 4. Se o endereço/local de execução está em DF → section = "DF"
 5. QUALQUER OUTRO ESTADO → section = "AVISOS_DIVERSOS"
 6. Se não foi possível identificar o estado → section = "AVISOS_DIVERSOS"
+
+REGRA CRÍTICA DE CLASSIFICAÇÃO GEOGRÁFICA:
+A classificação do Estado (UF) deve ser baseada ÚNICA E EXCLUSIVAMENTE na cidade/estado onde o serviço será executado ou na localização da Prefeitura/órgão demandante.
+IGNORE COMPLETAMENTE siglas de UF isoladas que apareçam apenas no NOME do órgão licitante (ex: "CESUP - SP", "2ª Região - SP", "Gerência Regional/SP").
+Exemplo: Se o órgão é "CESUP - SP" mas o serviço será executado em Salvador/BA, o state DEVE ser "BA" e section DEVE ser "AVISOS_DIVERSOS".
+Se o órgão é "Superintendência Regional/SP" mas a cidade de execução é Andirá/PR, o state DEVE ser "PR" e section DEVE ser "AVISOS_DIVERSOS".
 
 NUNCA faça fallback para SP, MG ou DF em caso de dúvida. Na dúvida, use "AVISOS_DIVERSOS".
 

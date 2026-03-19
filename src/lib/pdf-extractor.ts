@@ -71,11 +71,16 @@ const TECHNICAL_KEYWORDS = [
 ];
 
 const COMPETITORS = [
-  'ORION', 'ORION ENGENHARIA', 'ORION ENGENHARIA E TECNOLOGIA',
-  'GREEN4T', 'GLS ENGENHARIA', 'GLS', 'VIRTUAL ENGENHARIA', 'VIRTUAL',
-  'GEMELO', 'CETEST', 'KOERICH', 'KOERICH ENGENHARIA',
-  'MPE', 'MPE ENGENHARIA', 'EQS', 'EQS ENGENHARIA',
-  'ACECO', 'ACECO TI', 'ATLÂNTICO ENGENHARIA', 'VIA ENGENHARIA',
+  'ORION ENGENHARIA E TECNOLOGIA', 'ORION ENGENHARIA', 'GRUPO ORION',
+  'GREEN4T',
+  'GLS ENGENHARIA',
+  'VIRTUAL ENGENHARIA',
+  'GEMELO', 'CETEST',
+  'KOERICH ENGENHARIA', 'KOERICH',
+  'MPE ENGENHARIA E SERVICOS', 'MPE ENGENHARIA',
+  'EQS ENGENHARIA',
+  'ACECO TI', 'ACECO',
+  'ATLÂNTICO ENGENHARIA', 'VIA ENGENHARIA',
 ];
 
 const BLACKLIST_TERMS = [
@@ -113,8 +118,9 @@ function isSummaryOrHeader(text: string): boolean {
 }
 
 function buildCompetitorRegex(): RegExp {
-  const patterns = COMPETITORS.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  return new RegExp(`(${patterns.join('|')})`, 'gi');
+  const sorted = [...COMPETITORS].sort((a, b) => b.length - a.length);
+  const patterns = sorted.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(`\\b(${patterns.join('|')})\\b`, 'gi');
 }
 
 function buildTechnicalRegex(): RegExp {
@@ -201,10 +207,13 @@ export function preFilterBlocks(text: string): { relevant: string[]; stats: { to
   for (const block of blocks) {
     if (isSummaryOrHeader(block)) { discarded++; continue; }
 
+    // BLACKLIST SOBERANA — prioridade absoluta, antes de concorrentes
+    if (containsBlacklist(block)) { discarded++; continue; }
+
     const competitor = matchesCompetitor(block);
     if (competitor) { relevant.push(block); competitors++; continue; }
 
-    if (containsBlacklist(block) || !containsNoticeType(block)) { discarded++; continue; }
+    if (!containsNoticeType(block)) { discarded++; continue; }
     if (!matchesTechnicalScope(block)) { discarded++; continue; }
 
     relevant.push(block);
