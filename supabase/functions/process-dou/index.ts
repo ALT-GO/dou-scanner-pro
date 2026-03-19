@@ -409,6 +409,24 @@ Uma publicação válida SEMPRE descreve um ato administrativo (Aviso, Extrato, 
 Se o bloco parecer ser um sumário ou índice, retorne is_relevant = false.
 
 ════════════════════════════════════════
+REGRA DE ESCOPO TÉCNICO — ELIMINATÓRIA
+════════════════════════════════════════
+Esta regra é ELIMINATÓRIA e tem prioridade sobre qualquer outra correspondência de palavras-chave.
+Se o OBJETO PRINCIPAL do texto se referir a qualquer um dos itens abaixo, DESCARTE IMEDIATAMENTE (is_relevant = false):
+- Alimentação, nutrição, merenda escolar, ração animal, gêneros alimentícios
+- Saúde médica, medicamentos, equipamentos hospitalares, insumos médicos
+- Educação (material didático, uniformes escolares, transporte escolar)
+- Veículos, automóveis, caminhões, motocicletas, locação de veículos
+- Passagens aéreas, hospedagem, agência de viagens
+- Agricultura, pecuária, insumos agrícolas, defensivos
+- Combustíveis, abastecimento de frota
+- Limpeza e conservação (sem vínculo com manutenção predial técnica)
+- Vigilância patrimonial desarmada (sem sistemas eletrônicos)
+- Material de escritório, expediente, impressão gráfica
+
+Mesmo que o texto contenha palavras como "engenharia", "manutenção" ou "infraestrutura" em contextos genéricos, se o OBJETO PRINCIPAL for um dos itens acima, DESCARTE.
+
+════════════════════════════════════════
 CONTEXTO
 ════════════════════════════════════════
 Você receberá um array JSON de blocos, cada um com um "id" numérico e um "text". Todos os blocos JÁ PASSARAM por um pré-filtro de palavras-chave.
@@ -420,23 +438,26 @@ Para CADA bloco, extraia:
 - object_text: texto do campo "Objeto" da contratação
 - city: cidade identificada
 - state: UF (SP, MG, DF, PE, etc.)
-- is_relevant: true se for uma publicação válida (ato administrativo), false se for sumário/lixo
+- is_relevant: true SOMENTE se for uma publicação válida com escopo técnico compatível
 - competitor_match: nome do concorrente encontrado ou null
 - section: classificação ("SP", "MG", "DF", "CONCORRENTES", "AVISOS_DIVERSOS")
 
 NÃO retorne o campo full_text. Use o block_id para referenciar o bloco original.
 
-REGRAS DE CLASSIFICAÇÃO:
-1. Se menciona um concorrente → section = "CONCORRENTES"
-2. Se estado = SP → section = "SP"
-3. Se estado = MG → section = "MG"
-4. Se estado = DF → section = "DF"
-5. Caso contrário → section = "AVISOS_DIVERSOS"
+REGRAS DE CLASSIFICAÇÃO GEOGRÁFICA (RIGOROSAS):
+1. Se menciona um concorrente monitorado → section = "CONCORRENTES"
+2. Se o endereço/local de execução está em SP → section = "SP"
+3. Se o endereço/local de execução está em MG → section = "MG"
+4. Se o endereço/local de execução está em DF → section = "DF"
+5. QUALQUER OUTRO ESTADO → section = "AVISOS_DIVERSOS"
+6. Se não foi possível identificar o estado → section = "AVISOS_DIVERSOS"
+
+NUNCA faça fallback para SP, MG ou DF em caso de dúvida. Na dúvida, use "AVISOS_DIVERSOS".
 
 Concorrentes monitorados:
 ${COMPETITORS.map(c => `- ${c}`).join('\n')}
 
-IMPORTANTE: Retorne TODAS as publicações válidas. Não omita nenhuma. Descarte sumários e índices.`;
+IMPORTANTE: Retorne TODAS as publicações válidas com escopo técnico compatível. Descarte sumários, índices e publicações fora do escopo técnico.`;
 }
 
 // ═══════════════════════════════════════════════════
