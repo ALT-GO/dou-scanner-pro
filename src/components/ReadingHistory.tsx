@@ -1,4 +1,4 @@
-import { FileText, Download, Eye, Loader2 } from 'lucide-react';
+import { FileText, Download, Eye, Loader2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
@@ -10,16 +10,19 @@ interface Reading {
   total_opportunities: number;
   total_competitor_mentions: number;
   status: string;
+  created_at: string;
 }
 
 interface ReadingHistoryProps {
   readings: Reading[];
   onViewReport: (readingId: string) => void;
   onDownloadReport: (readingId: string) => void;
+  onDeleteReading: (readingId: string) => void;
   downloadingId: string | null;
+  deletingId: string | null;
 }
 
-export function ReadingHistory({ readings, onViewReport, onDownloadReport, downloadingId }: ReadingHistoryProps) {
+export function ReadingHistory({ readings, onViewReport, onDownloadReport, onDeleteReading, downloadingId, deletingId }: ReadingHistoryProps) {
   if (readings.length === 0) {
     return (
       <div className="text-center py-16 text-muted-foreground">
@@ -53,7 +56,12 @@ export function ReadingHistory({ readings, onViewReport, onDownloadReport, downl
                   day: 'numeric',
                 })}
               </p>
-              <p className="text-sm text-muted-foreground">{reading.pdf_filename}</p>
+              <p className="text-sm text-muted-foreground">
+                {reading.pdf_filename}
+                <span className="ml-2 text-xs opacity-60">
+                  {new Date(reading.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </p>
             </div>
           </div>
 
@@ -70,7 +78,7 @@ export function ReadingHistory({ readings, onViewReport, onDownloadReport, downl
                 Processando
               </Badge>
             ) : (
-              <div className="flex gap-2">
+              <div className="flex gap-1">
                 <Button variant="ghost" size="sm" onClick={() => onViewReport(reading.id)}>
                   <Eye className="h-4 w-4" />
                 </Button>
@@ -84,6 +92,19 @@ export function ReadingHistory({ readings, onViewReport, onDownloadReport, downl
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <Download className="h-4 w-4" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onDeleteReading(reading.id)}
+                  disabled={deletingId === reading.id}
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                >
+                  {deletingId === reading.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
                   )}
                 </Button>
               </div>
