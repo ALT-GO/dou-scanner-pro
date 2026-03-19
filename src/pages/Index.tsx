@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { FileUpload } from '@/components/FileUpload';
 import { StatsCards } from '@/components/StatsCards';
 import { ReadingHistory } from '@/components/ReadingHistory';
 import { PublicationsView } from '@/components/PublicationsView';
+import { ProcessingLog, LogEntry, LogLevel } from '@/components/ProcessingLog';
 import { extractTextFromPDF } from '@/lib/pdf-extractor';
 import { generateReport } from '@/lib/report-generator';
 import { supabase } from '@/integrations/supabase/client';
@@ -36,6 +37,22 @@ export default function Index() {
   const [selectedReadingId, setSelectedReadingId] = useState<string | null>(null);
   const [publications, setPublications] = useState<Publication[]>([]);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const logIdRef = useRef(0);
+
+  const addLog = useCallback((level: LogLevel, message: string, details?: string) => {
+    const id = String(++logIdRef.current);
+    setLogs(prev => [...prev, { id, timestamp: new Date(), level, message, details }]);
+  }, []);
+
+  const updateLastLog = useCallback((level: LogLevel, message: string, details?: string) => {
+    setLogs(prev => {
+      if (prev.length === 0) return prev;
+      const updated = [...prev];
+      updated[updated.length - 1] = { ...updated[updated.length - 1], level, message, details };
+      return updated;
+    });
+  }, []);
 
   const fetchReadings = useCallback(async () => {
     const { data, error } = await supabase
@@ -67,19 +84,24 @@ export default function Index() {
 
   const handleFileSelected = async (file: File) => {
     setIsProcessing(true);
+    setLogs([]);
+    logIdRef.current = 0;
+
     try {
-      toast.info('Extraindo texto do PDF...');
+      addLog('processing', `Extraindo texto do PDF: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)...`);
+
       const text = await extractTextFromPDF(file);
 
       if (!text || text.trim().length < 100) {
+        addLog('error', 'Falha na extração: texto insuficiente', `Caracteres extraídos: ${text?.length || 0}`);
         toast.error('Não foi possível extrair texto suficiente do PDF.');
         setIsProcessing(false);
         return;
       }
 
-      toast.info('Enviando para análise com IA...');
+      updateLastLog('success', `Texto extraído: ${text.length.toLocaleString('pt-BR')} caracteres`);
+      addLog('processing', 'Criando registro de leitura no banco de dados...');
 
-      // Create reading record first
       const today = new Date().toISOString().split('T')[0];
       const { data: reading, error: readingError } = await supabase
         .from('dou_readings')
@@ -92,27 +114,66 @@ export default function Index() {
         .single();
 
       if (readingError || !reading) {
+        addLog('error', 'Falha ao criar registro de leitura', readingError?.message || 'Resposta vazia');
         toast.error('Erro ao criar registro de leitura');
         setIsProcessing(false);
         return;
       }
 
-      // Send to edge function for AI processing
+      updateLastLog('success', `Registro criado: ${reading.id.substring(0, 8)}...`);
+      addLog('processing', 'Enviando texto para a Edge Function (pré-filtro + IA)...');
+      addLog('info', `Payload: ${(text.length / 1024).toFixed(0)} KB de texto para readingId=${reading.id.substring(0, 8)}...`);
+
+      const startTime = Date.now();
       const { data: result, error: fnError } = await supabase.functions.invoke('process-dou', {
         body: { text, readingId: reading.id },
       });
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
       if (fnError) {
-        console.error('Edge function error:', fnError);
+        const errorDetail = typeof fnError === 'object' ? JSON.stringify(fnError, null, 2) : String(fnError);
+        addLog('error', `Edge Function falhou após ${elapsed}s`, errorDetail);
+
+        if (fnError.message?.includes('429') || fnError.status === 429) {
+          addLog('warning', 'Rate limit atingido — aguarde alguns minutos antes de tentar novamente');
+        } else if (fnError.message?.includes('402') || fnError.status === 402) {
+          addLog('warning', 'Créditos insuficientes — adicione créditos ao workspace');
+        } else if (fnError.message?.includes('timeout') || fnError.message?.includes('FUNCTION_INVOCATION_TIMEOUT')) {
+          addLog('warning', 'Timeout da função — o PDF pode ser grande demais para processar de uma vez');
+        }
+
         toast.error('Erro no processamento com IA');
         await supabase.from('dou_readings').update({ status: 'error' }).eq('id', reading.id);
         setIsProcessing(false);
         return;
       }
 
+      if (result?.error) {
+        addLog('error', `Erro retornado pela IA após ${elapsed}s`, result.error);
+        toast.error(result.error);
+        await supabase.from('dou_readings').update({ status: 'error' }).eq('id', reading.id);
+        setIsProcessing(false);
+        return;
+      }
+
+      updateLastLog('success', `Edge Function concluída em ${elapsed}s`);
+
+      // Log pre-filter stats
+      if (result?.preFilterStats) {
+        const s = result.preFilterStats;
+        addLog('info', `Pré-filtro: ${s.total} blocos → ${s.competitors} concorrentes, ${s.technical} técnicos, ${s.discarded} descartados`);
+      }
+
+      addLog('success', `✔ ${result.totalPublications} publicações identificadas`);
+      addLog('info', `  ├─ Oportunidades: ${result.opportunities}`);
+      addLog('info', `  └─ Menções a concorrentes: ${result.competitorMentions}`);
+
       toast.success(`Processamento concluído! ${result.totalPublications} publicações identificadas.`);
       await fetchReadings();
     } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      const errorStack = err instanceof Error ? err.stack : undefined;
+      addLog('error', `Erro inesperado: ${errorMsg}`, errorStack);
       console.error('Processing error:', err);
       toast.error('Erro ao processar o documento');
     } finally {
@@ -205,7 +266,7 @@ export default function Index() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="lg:col-span-1"
+                className="lg:col-span-1 space-y-4"
               >
                 <div className="bg-card border border-border/60 rounded-xl p-6">
                   <h2 className="text-lg font-semibold text-foreground mb-4">
@@ -216,6 +277,8 @@ export default function Index() {
                     isProcessing={isProcessing}
                   />
                 </div>
+
+                <ProcessingLog logs={logs} visible={logs.length > 0} />
               </motion.div>
 
               <motion.div
@@ -243,3 +306,4 @@ export default function Index() {
     </div>
   );
 }
+
