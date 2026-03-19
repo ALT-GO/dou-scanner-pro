@@ -1,4 +1,4 @@
-import { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle } from 'docx';
+import { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, HeadingLevel, TableOfContents } from 'docx';
 import { saveAs } from 'file-saver';
 import { buildHighlightRegex, COMPETITORS } from './keywords';
 
