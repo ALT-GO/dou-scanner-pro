@@ -158,30 +158,113 @@ function preFilterText(text: string): PreFilterResult {
 }
 
 // ═══════════════════════════════════════════════════
-// STATE DETECTION (Post-processing)
+// GEOLOCATION & REGIONAL CLASSIFICATION
 // ═══════════════════════════════════════════════════
 
-function detectState(text: string): string | null {
-  const ufPattern = /(?:[A-Za-zÀ-ÿ\s]+)[\/\-–—]\s*(SP|MG|DF|RJ|BA|PR|RS|SC|GO|PE|CE|PA|MA|MT|MS|ES|PB|RN|AL|PI|SE|TO|RO|AC|AP|AM|RR)\b/gi;
-  const matches = [...text.matchAll(ufPattern)];
+// Exhaustive city lists for priority states
+const SP_CITIES = [
+  'São Paulo', 'Campinas', 'Santos', 'São José dos Campos', 'Ribeirão Preto',
+  'Guarulhos', 'Sorocaba', 'São Bernardo do Campo', 'São Bernardo', 'Osasco',
+  'Bauru', 'Piracicaba', 'São Carlos', 'Jundiaí', 'Mogi das Cruzes',
+  'Santo André', 'São Caetano do Sul', 'Diadema', 'Mauá', 'Suzano',
+  'Taubaté', 'Limeira', 'Americana', 'Marília', 'Presidente Prudente',
+  'Araraquara', 'Franca', 'Itapetininga', 'Jacareí', 'Hortolândia',
+  'Rio Claro', 'Indaiatuba', 'Cotia', 'Taboão da Serra', 'Sumaré',
+  'Barueri', 'Embu das Artes', 'São Vicente', 'Praia Grande', 'Guarujá',
+  'Cubatão', 'Itanhaém', 'Registro', 'Atibaia', 'Bragança Paulista',
+  'Botucatu', 'Assis', 'Ourinhos', 'Catanduva', 'Araçatuba',
+  'Birigui', 'Votuporanga', 'São José do Rio Preto', 'Fernandópolis',
+  'Jaú', 'Lençóis Paulista', 'Itu', 'Salto', 'Votorantim',
+  'Carapicuíba', 'Itapecerica da Serra', 'Franco da Rocha', 'Caieiras',
+  'Itapevi', 'Santana de Parnaíba', 'Guaratinguetá', 'Lorena',
+  'Cruzeiro', 'Pindamonhangaba', 'Caraguatatuba', 'São Sebastião',
+  'Ubatuba', 'Ilhabela', 'Mogi Guaçu', 'Mogi Mirim', 'Amparo',
+  'Valinhos', 'Vinhedo', 'Itatiba', 'Campo Limpo Paulista',
+  'Várzea Paulista', 'Lins', 'Tupã', 'Adamantina', 'Dracena',
+  'Presidente Epitácio', 'Presidente Venceslau', 'Penápolis',
+];
 
-  for (const m of matches) {
+const MG_CITIES = [
+  'Belo Horizonte', 'Uberlândia', 'Juiz de Fora', 'Montes Claros',
+  'Contagem', 'Betim', 'Uberaba', 'Governador Valadares', 'Ipatinga',
+  'Poços de Caldas', 'Campo Belo', 'São José da Lapa', 'Sete Lagoas',
+  'Divinópolis', 'Pouso Alegre', 'Teófilo Otoni', 'Barbacena',
+  'Sabará', 'Varginha', 'Conselheiro Lafaiete', 'Patos de Minas',
+  'Araguari', 'Lavras', 'Itajubá', 'Passos', 'Muriaé',
+  'Ituiutaba', 'Caratinga', 'Nova Lima', 'Santa Luzia',
+  'Ribeirão das Neves', 'Itabira', 'Ouro Preto', 'Viçosa',
+  'São João del-Rei', 'Araxá', 'Alfenas', 'Três Corações',
+  'Manhuaçu', 'Januária', 'Paracatu', 'Patrocínio', 'Frutal',
+  'Curvelo', 'Diamantina', 'Pedro Leopoldo', 'Lagoa Santa',
+  'Coronel Fabriciano', 'Timóteo', 'João Monlevade',
+  'Congonhas', 'Itaúna', 'Formiga', 'Ubá', 'Cataguases',
+  'Além Paraíba', 'Leopoldina', 'Santos Dumont',
+];
+
+const DF_CITIES = [
+  'Brasília', 'Brasilia', 'Taguatinga', 'Ceilândia', 'Ceilandia',
+  'Gama', 'Samambaia', 'Planaltina', 'Sobradinho', 'Recanto das Emas',
+  'Águas Claras', 'Aguas Claras', 'Guará', 'Guara', 'Cruzeiro',
+  'Lago Sul', 'Lago Norte', 'Asa Sul', 'Asa Norte',
+  'São Sebastião', 'Santa Maria', 'Riacho Fundo', 'Itapoã',
+  'Paranoá', 'Núcleo Bandeirante', 'Candangolândia', 'Park Way',
+  'Jardim Botânico', 'Vicente Pires', 'SIA', 'SAAN', 'Sudoeste', 'Noroeste',
+];
+
+// Organs/entities that identify priority states
+const STATE_ORGANS = [
+  { pattern: /\b(Governo do Distrito Federal|GDF|TCDF|CLDF|MPDFT|PGDF|SES[\-\/]DF|SEE[\-\/]DF|NOVACAP|CAESB|CEB|TERRACAP|METRÔ[\-\/]DF)\b/gi, state: 'DF' },
+  { pattern: /\b(Governo do Estado de São Paulo|SABESP|CPTM|CDHU|DERSA|DER[\-\/]SP|ARTESP|IMESP|PRODESP|CPOS|FDE|IPT|UNICAMP|UNESP|USP)\b/gi, state: 'SP' },
+  { pattern: /\b(Governo do Estado de Minas Gerais|CEMIG|COPASA|DER[\-\/]MG|DEOP[\-\/]MG|CODEMIG|UFMG|UFJF|UFU|UFLA|UFV)\b/gi, state: 'MG' },
+];
+
+// State names in full text
+const STATE_FULL_NAMES: [RegExp, string][] = [
+  [/\bSão Paulo\b/gi, 'SP'],
+  [/\bMinas Gerais\b/gi, 'MG'],
+  [/\bDistrito Federal\b/gi, 'DF'],
+];
+
+function buildCityRegex(cities: string[]): RegExp {
+  const escaped = cities.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(`\\b(${escaped.join('|')})\\b`, 'gi');
+}
+
+const SP_REGEX = buildCityRegex(SP_CITIES);
+const MG_REGEX = buildCityRegex(MG_CITIES);
+const DF_REGEX = buildCityRegex(DF_CITIES);
+
+function detectState(text: string): string | null {
+  // 1. Check explicit UF patterns (Cidade/UF, Cidade-UF)
+  const ufPattern = /(?:[A-Za-zÀ-ÿ\s]+)[\/\-–—]\s*(SP|MG|DF|RJ|BA|PR|RS|SC|GO|PE|CE|PA|MA|MT|MS|ES|PB|RN|AL|PI|SE|TO|RO|AC|AP|AM|RR)\b/gi;
+  const ufMatches = [...text.matchAll(ufPattern)];
+  for (const m of ufMatches) {
     const uf = m[1].toUpperCase();
     if (['SP', 'MG', 'DF'].includes(uf)) return uf;
   }
 
-  const cityMap: [RegExp, string][] = [
-    [/\b(Bras[íi]lia|Taguatinga|Ceil[âa]ndia|Gama|Samambaia|Planaltina|Governo do Distrito Federal|GDF)\b/gi, 'DF'],
-    [/\b(Campinas|Santos|São José dos Campos|Ribeirão Preto|Guarulhos|Sorocaba|São Bernardo|Osasco|Bauru|Piracicaba|São Carlos|Jundiaí|Mogi das Cruzes|São Paulo)\b/gi, 'SP'],
-    [/\b(Belo Horizonte|Uberlândia|Juiz de Fora|Montes Claros|Contagem|Betim|Uberaba|Governador Valadares|Ipatinga|Poços de Caldas|Campo Belo|São José da Lapa)\b/gi, 'MG'],
-  ];
+  // 2. Check state organs/entities
+  for (const { pattern, state } of STATE_ORGANS) {
+    if (pattern.test(text)) { pattern.lastIndex = 0; return state; }
+    pattern.lastIndex = 0;
+  }
 
-  for (const [regex, state] of cityMap) {
+  // 3. Check full state names
+  for (const [regex, state] of STATE_FULL_NAMES) {
     if (regex.test(text)) { regex.lastIndex = 0; return state; }
     regex.lastIndex = 0;
   }
 
-  if (matches.length > 0) return matches[0][1].toUpperCase();
+  // 4. Check city names (priority order: DF first due to Brasília ambiguity)
+  if (DF_REGEX.test(text)) { DF_REGEX.lastIndex = 0; return 'DF'; }
+  DF_REGEX.lastIndex = 0;
+  if (SP_REGEX.test(text)) { SP_REGEX.lastIndex = 0; return 'SP'; }
+  SP_REGEX.lastIndex = 0;
+  if (MG_REGEX.test(text)) { MG_REGEX.lastIndex = 0; return 'MG'; }
+  MG_REGEX.lastIndex = 0;
+
+  // 5. Any other UF found → return it (will become AVISOS_DIVERSOS)
+  if (ufMatches.length > 0) return ufMatches[0][1].toUpperCase();
   return null;
 }
 
