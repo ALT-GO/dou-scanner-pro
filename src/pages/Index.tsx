@@ -209,6 +209,27 @@ export default function Index() {
     }
   };
 
+  const handleDeleteReading = async (readingId: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta leitura?')) return;
+    setDeletingId(readingId);
+    try {
+      const { error } = await supabase.functions.invoke('delete-reading', {
+        body: { readingId },
+      });
+      if (error) throw error;
+      toast.success('Leitura excluída com sucesso');
+      if (selectedReadingId === readingId) {
+        setSelectedReadingId(null);
+        setPublications([]);
+      }
+      await fetchReadings();
+    } catch {
+      toast.error('Erro ao excluir leitura');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const totalOpportunities = readings.reduce((sum, r) => sum + r.total_opportunities, 0);
   const totalCompetitorMentions = readings.reduce((sum, r) => sum + r.total_competitor_mentions, 0);
   const lastReadingDate = readings.length > 0 ? readings[0].reading_date : null;
