@@ -121,8 +121,7 @@ export default function Index() {
       }
 
       updateLastLog('success', `Registro criado: ${reading.id.substring(0, 8)}...`);
-      addLog('processing', 'Enviando texto para a Edge Function (pré-filtro + IA)...');
-      addLog('info', `Payload: ${(text.length / 1024).toFixed(0)} KB de texto para readingId=${reading.id.substring(0, 8)}...`);
+      addLog('processing', `Enviando ${(text.length / 1024).toFixed(0)} KB para a Edge Function (pré-filtro + IA)... isso pode levar até 90s`);
 
       const startTime = Date.now();
       const { data: result, error: fnError } = await supabase.functions.invoke('process-dou', {
