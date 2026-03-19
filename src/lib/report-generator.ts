@@ -19,7 +19,13 @@ const LIGHT_ACCENT = 'E8F0F8';
 const DIVIDER_COLOR = 'B0C4D8';
 const MUTED_COLOR = '666666';
 
-function highlightTextRuns(text: string, baseFontSize: number, baseProps?: Partial<ConstructorParameters<typeof TextRun>[0]>): TextRun[] {
+interface RunProps {
+  bold?: boolean;
+  italics?: boolean;
+  color?: string;
+}
+
+function highlightTextRuns(text: string, baseFontSize: number, baseProps?: RunProps): TextRun[] {
   const regex = buildHighlightRegex();
   const runs: TextRun[] = [];
   let lastIndex = 0;
@@ -31,7 +37,7 @@ function highlightTextRuns(text: string, baseFontSize: number, baseProps?: Parti
         text: text.slice(lastIndex, match.index),
         size: baseFontSize,
         font: 'Arial',
-        ...baseProps,
+        ...(baseProps || {}),
       }));
     }
     const isCompetitor = COMPETITORS.some(c => c.toLowerCase() === match![0].toLowerCase());
@@ -41,7 +47,7 @@ function highlightTextRuns(text: string, baseFontSize: number, baseProps?: Parti
       font: 'Arial',
       bold: true,
       color: isCompetitor ? 'C0392B' : ACCENT_COLOR,
-      ...baseProps,
+      ...(baseProps || {}),
     }));
     lastIndex = regex.lastIndex;
   }
@@ -51,12 +57,12 @@ function highlightTextRuns(text: string, baseFontSize: number, baseProps?: Parti
       text: text.slice(lastIndex),
       size: baseFontSize,
       font: 'Arial',
-      ...baseProps,
+      ...(baseProps || {}),
     }));
   }
 
   if (runs.length === 0) {
-    runs.push(new TextRun({ text, size: baseFontSize, font: 'Arial', ...baseProps }));
+    runs.push(new TextRun({ text, size: baseFontSize, font: 'Arial', ...(baseProps || {}) }));
   }
 
   return runs;
