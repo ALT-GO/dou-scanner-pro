@@ -629,6 +629,35 @@ serve(async (req) => {
       if (failedBatches > 0) {
         console.log(`${failedBatches}/${batches.length} batches failed — proceeding with ${batches.length - failedBatches} successful`);
       }
+
+      // Flatten and reconstruct full_text from block_id
+      const rawAiPubs = successfulResults.flat();
+      const blockMap = new Map(blocksWithId.map(b => [b.id, b.text]));
+      aiPublications = rawAiPubs.map((pub: any) => ({
+        ...pub,
+        full_text: blockMap.get(pub.block_id) || '',
+      }));
+      console.log(`Reconstructed full_text for ${aiPublications.length} publications from block IDs`);
+    }
+
+    // ── STEP 3: Post-process ──
+    const publications = postProcessPublications(aiPublications);
+    console.log(`Final: ${aiPublications.length} AI raw → ${publications.length} after post-processing`);
+
+    // ── STEP 4: Insert into database ──
+    if (publications.length > 0) {
+      const pubRecords = publications.map((pub: any) => ({
+        reading_id: readingId,
+        publication_type: pub.publication_type || "Não identificado",
+        section: pub.section || "AVISOS_DIVERSOS",
+        organ: pub.organ || null,
+        object_text: pub.object_text || null,
+        full_text: pub.full_text || "",
+        state: pub.state || null,
+        is_relevant: pub.is_relevant ?? true,
+        competitor_match: pub.competitor_match || null,
+      }));
+
       const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/dou_publications`, {
         method: "POST",
         headers: {
