@@ -224,7 +224,7 @@ const SP_CITIES = [
   'Jaú', 'Lençóis Paulista', 'Itu', 'Salto', 'Votorantim',
   'Carapicuíba', 'Itapecerica da Serra', 'Franco da Rocha', 'Caieiras',
   'Itapevi', 'Santana de Parnaíba', 'Guaratinguetá', 'Lorena',
-  'Cruzeiro', 'Pindamonhangaba', 'Caraguatatuba', 'São Sebastião',
+  'Pindamonhangaba', 'Caraguatatuba',
   'Ubatuba', 'Ilhabela', 'Mogi Guaçu', 'Mogi Mirim', 'Amparo',
   'Valinhos', 'Vinhedo', 'Itatiba', 'Campo Limpo Paulista',
   'Várzea Paulista', 'Lins', 'Tupã', 'Adamantina', 'Dracena',
@@ -245,15 +245,15 @@ const MG_CITIES = [
   'Curvelo', 'Diamantina', 'Pedro Leopoldo', 'Lagoa Santa',
   'Coronel Fabriciano', 'Timóteo', 'João Monlevade',
   'Congonhas', 'Itaúna', 'Formiga', 'Ubá', 'Cataguases',
-  'Além Paraíba', 'Leopoldina', 'Santos Dumont',
+  'Além Paraíba', 'Leopoldina',
 ];
 
 const DF_CITIES = [
   'Brasília', 'Brasilia', 'Taguatinga', 'Ceilândia', 'Ceilandia',
   'Gama', 'Samambaia', 'Planaltina', 'Sobradinho', 'Recanto das Emas',
-  'Águas Claras', 'Aguas Claras', 'Guará', 'Guara', 'Cruzeiro',
+  'Águas Claras', 'Aguas Claras', 'Guará', 'Guara',
   'Lago Sul', 'Lago Norte', 'Asa Sul', 'Asa Norte',
-  'São Sebastião', 'Santa Maria', 'Riacho Fundo', 'Itapoã',
+  'Riacho Fundo', 'Itapoã',
   'Paranoá', 'Núcleo Bandeirante', 'Candangolândia', 'Park Way',
   'Jardim Botânico', 'Vicente Pires', 'SIA', 'SAAN', 'Sudoeste', 'Noroeste',
 ];
@@ -279,24 +279,85 @@ const SP_REGEX = buildCityRegex(SP_CITIES);
 const MG_REGEX = buildCityRegex(MG_CITIES);
 const DF_REGEX = buildCityRegex(DF_CITIES);
 
+// All Brazilian UF codes for detecting non-target states
+const ALL_UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+const TARGET_UFS = ['SP', 'MG', 'DF'];
+
 function detectState(text: string): string | null {
-  const ufPattern = /(?:[A-Za-zÀ-ÿ\s]+)[\/\-–—]\s*(SP|MG|DF|RJ|BA|PR|RS|SC|GO|PE|CE|PA|MA|MT|MS|ES|PB|RN|AL|PI|SE|TO|RO|AC|AP|AM|RR)\b/gi;
-  const ufMatches = [...text.matchAll(ufPattern)];
-  for (const m of ufMatches) {
-    const uf = m[1].toUpperCase();
-    if (['SP', 'MG', 'DF'].includes(uf)) return uf;
+  // ─── STEP 1: Explicit address lines (strongest signal) ───
+  // Pattern: "Endereço: ... - CITY - UF" or "CITY/UF" or "CITY - UF"
+  const addressPatterns = [
+    /Endere[cç]o\s*:.*?[-–—]\s*([A-Z]{2})\b/gi,
+    /[-–—]\s*([A-Z]{2})\s*(?:\.|,|\s*CEP|\s*\d{5})/gi,
+    /\b([A-ZÀ-Ú][a-zà-ú]+(?:\s+[a-zà-ú]+)*)\s*[-–—\/]\s*(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/gi,
+  ];
+
+  const foundUFs: { uf: string; priority: number }[] = [];
+
+  for (const pattern of addressPatterns) {
+    let m: RegExpExecArray | null;
+    while ((m = pattern.exec(text)) !== null) {
+      // The UF is either group 1 or group 2 depending on pattern
+      const candidate = (m[2] || m[1]).toUpperCase();
+      if (ALL_UFS.includes(candidate)) {
+        foundUFs.push({ uf: candidate, priority: 1 });
+      }
+    }
+    pattern.lastIndex = 0;
   }
 
+  // ─── STEP 2: Explicit "em Sergipe", "no Pará", etc. (state full names for non-target) ───
+  const stateFullMap: [RegExp, string][] = [
+    [/\bem\s+Sergipe\b/gi, 'SE'], [/\bem\s+Alagoas\b/gi, 'AL'],
+    [/\bno\s+Rio\s+de\s+Janeiro\b/gi, 'RJ'], [/\bna\s+Bahia\b/gi, 'BA'],
+    [/\bno\s+Paran[áa]\b/gi, 'PR'], [/\bno\s+Rio\s+Grande\s+do\s+Sul\b/gi, 'RS'],
+    [/\bem\s+Santa\s+Catarina\b/gi, 'SC'], [/\bem\s+Goi[áa]s\b/gi, 'GO'],
+    [/\bem\s+Pernambuco\b/gi, 'PE'], [/\bno\s+Cear[áa]\b/gi, 'CE'],
+    [/\bno\s+Par[áa]\b/gi, 'PA'], [/\bno\s+Maranh[ãa]o\b/gi, 'MA'],
+    [/\bno\s+Mato\s+Grosso\b/gi, 'MT'], [/\bno\s+Mato\s+Grosso\s+do\s+Sul\b/gi, 'MS'],
+    [/\bno\s+Esp[ií]rito\s+Santo\b/gi, 'ES'], [/\bna\s+Para[ií]ba\b/gi, 'PB'],
+    [/\bno\s+Rio\s+Grande\s+do\s+Norte\b/gi, 'RN'], [/\bno\s+Piau[ií]\b/gi, 'PI'],
+    [/\bem\s+Tocantins\b/gi, 'TO'], [/\bem\s+Rond[ôo]nia\b/gi, 'RO'],
+    [/\bno\s+Acre\b/gi, 'AC'], [/\bno\s+Amap[áa]\b/gi, 'AP'],
+    [/\bno\s+Amazonas\b/gi, 'AM'], [/\bem\s+Roraima\b/gi, 'RR'],
+    [/\bem\s+São\s+Paulo\b/gi, 'SP'], [/\bem\s+Minas\s+Gerais\b/gi, 'MG'],
+    [/\bno\s+Distrito\s+Federal\b/gi, 'DF'],
+  ];
+
+  for (const [regex, uf] of stateFullMap) {
+    if (regex.test(text)) { regex.lastIndex = 0; foundUFs.push({ uf, priority: 2 }); }
+    regex.lastIndex = 0;
+  }
+
+  // ─── STEP 3: Generic UF pattern (CITY - UF or CITY/UF) ───
+  const genericUf = /\b[A-ZÀ-Ú][A-ZÀ-Úa-zà-ú\s]+\s*[-–—\/]\s*(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/g;
+  let gm: RegExpExecArray | null;
+  while ((gm = genericUf.exec(text)) !== null) {
+    foundUFs.push({ uf: gm[1].toUpperCase(), priority: 3 });
+  }
+
+  // ─── STEP 4: If ANY non-target UF was found at high priority, that's the real location ───
+  if (foundUFs.length > 0) {
+    // Sort by priority (1 = strongest)
+    foundUFs.sort((a, b) => a.priority - b.priority);
+    const bestUf = foundUFs[0].uf;
+    // If the best match is a non-target UF, return it (will become AVISOS_DIVERSOS)
+    return bestUf;
+  }
+
+  // ─── STEP 5: State-specific organs (only if no explicit UF found) ───
   for (const { pattern, state } of STATE_ORGANS) {
     if (pattern.test(text)) { pattern.lastIndex = 0; return state; }
     pattern.lastIndex = 0;
   }
 
+  // ─── STEP 6: Target state full names ───
   for (const [regex, state] of STATE_FULL_NAMES) {
     if (regex.test(text)) { regex.lastIndex = 0; return state; }
     regex.lastIndex = 0;
   }
 
+  // ─── STEP 7: City name matching (lowest priority, only if nothing else matched) ───
   if (DF_REGEX.test(text)) { DF_REGEX.lastIndex = 0; return 'DF'; }
   DF_REGEX.lastIndex = 0;
   if (SP_REGEX.test(text)) { SP_REGEX.lastIndex = 0; return 'SP'; }
@@ -304,7 +365,6 @@ function detectState(text: string): string | null {
   if (MG_REGEX.test(text)) { MG_REGEX.lastIndex = 0; return 'MG'; }
   MG_REGEX.lastIndex = 0;
 
-  if (ufMatches.length > 0) return ufMatches[0][1].toUpperCase();
   return null;
 }
 
