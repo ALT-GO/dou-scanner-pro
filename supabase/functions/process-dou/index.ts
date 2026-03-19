@@ -169,7 +169,8 @@ interface PreFilterResult {
  * This reduces token usage dramatically by discarding irrelevant blocks.
  */
 function preFilterText(text: string): PreFilterResult {
-  const blocks = splitIntoBlocks(text);
+  const rawBlocks = splitIntoBlocks(text);
+  const blocks = deduplicateBlocks(rawBlocks);
   const relevantBlocks: string[] = [];
   const competitorBlocks: string[] = [];
   let competitors = 0, technical = 0, discarded = 0;
