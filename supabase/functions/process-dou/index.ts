@@ -349,18 +349,20 @@ Se o bloco parecer ser um sumário ou índice, retorne is_relevant = false.
 ════════════════════════════════════════
 CONTEXTO
 ════════════════════════════════════════
-Você receberá blocos de texto que JÁ PASSARAM por um pré-filtro de palavras-chave. Todos os blocos recebidos contêm termos técnicos relevantes. Sua tarefa é extrair e estruturar os dados de cada publicação.
+Você receberá um array JSON de blocos, cada um com um "id" numérico e um "text". Todos os blocos JÁ PASSARAM por um pré-filtro de palavras-chave.
 
-Para CADA bloco de texto recebido, extraia:
+Para CADA bloco, extraia:
+- block_id: o "id" numérico do bloco original (OBRIGATÓRIO)
 - publication_type: modalidade (Pregão Eletrônico, Concorrência, Dispensa, etc.)
 - organ: nome do órgão publicador
 - object_text: texto do campo "Objeto" da contratação
-- full_text: texto completo do bloco (SEM truncar, mantenha o texto integral)
 - city: cidade identificada
 - state: UF (SP, MG, DF, PE, etc.)
 - is_relevant: true se for uma publicação válida (ato administrativo), false se for sumário/lixo
 - competitor_match: nome do concorrente encontrado ou null
 - section: classificação ("SP", "MG", "DF", "CONCORRENTES", "AVISOS_DIVERSOS")
+
+NÃO retorne o campo full_text. Use o block_id para referenciar o bloco original.
 
 REGRAS DE CLASSIFICAÇÃO:
 1. Se menciona um concorrente → section = "CONCORRENTES"
@@ -372,7 +374,7 @@ REGRAS DE CLASSIFICAÇÃO:
 Concorrentes monitorados:
 ${COMPETITORS.map(c => `- ${c}`).join('\n')}
 
-IMPORTANTE: Retorne TODAS as publicações válidas. Não omita nenhuma. Descarte sumários e índices. Mantenha o texto completo de cada bloco.`;
+IMPORTANTE: Retorne TODAS as publicações válidas. Não omita nenhuma. Descarte sumários e índices.`;
 }
 
 // ═══════════════════════════════════════════════════
