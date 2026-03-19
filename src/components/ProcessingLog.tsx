@@ -83,7 +83,7 @@ export function ProcessingLog({ logs, visible }: ProcessingLogProps) {
               </div>
             );
           })}
-          <div ref={bottomRef} />
+          
         </div>
       </ScrollArea>
     </div>
