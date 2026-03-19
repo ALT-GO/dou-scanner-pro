@@ -273,6 +273,12 @@ export async function generateReport(
       border: { bottom: { style: BorderStyle.SINGLE, size: 3, color: ACCENT_COLOR } },
       spacing: { after: 300 },
     }),
+    // Table of Contents for navigation
+    new Paragraph({ spacing: { before: 200 }, children: [
+      new TextRun({ text: 'SUMÁRIO', bold: true, size: 26, color: ACCENT_COLOR, font: 'Arial' }),
+    ]}),
+    new TableOfContents("Sumário", { hyperlink: true, headingStyleRange: "1-2" }),
+    new Paragraph({ spacing: { after: 300 }, children: [] }),
   ];
 
   // ── SECTION 1: LICITAÇÕES (por região) ──
