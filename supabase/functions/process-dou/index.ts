@@ -508,120 +508,127 @@ serve(async (req) => {
 
       console.log(`Sending ${blocksWithId.length} blocks in ${batches.length} parallel batch(es) to AI`);
 
-      // Process all batches in parallel
-      const batchResults = await Promise.all(batches.map(async (batch, i) => {
-        const batchJson = JSON.stringify(batch.map(b => ({ id: b.id, text: b.text })));
-        console.log(`AI batch ${i + 1}/${batches.length} (${batchJson.length} chars, ${batch.length} blocks)`);
+      // Process all batches in parallel with retry and fault tolerance
+      const MAX_RETRIES = 2;
+      const RETRY_DELAY_MS = 3000;
 
-        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [
-              { role: "system", content: buildSystemPrompt() },
-              {
-                role: "user",
-                content: `Analise este array JSON de blocos e extraia as publicações válidas:\n\n${batchJson}`,
+      async function processBatch(batch: { id: number; text: string }[], batchIndex: number): Promise<any[]> {
+        const batchJson = JSON.stringify(batch.map(b => ({ id: b.id, text: b.text })));
+        console.log(`AI batch ${batchIndex + 1}/${batches.length} (${batchJson.length} chars, ${batch.length} blocks)`);
+
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+          if (attempt > 0) {
+            console.log(`Retry ${attempt}/${MAX_RETRIES} for batch ${batchIndex + 1} after ${RETRY_DELAY_MS}ms`);
+            await new Promise(r => setTimeout(r, RETRY_DELAY_MS * attempt));
+          }
+
+          try {
+            const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                "Content-Type": "application/json",
               },
-            ],
-            tools: [{
-              type: "function",
-              function: {
-                name: "classify_publications",
-                description: "Retorna as publicações estruturadas do DOU Seção 3",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    publications: {
-                      type: "array",
-                      items: {
-                        type: "object",
-                        properties: {
-                          block_id: { type: "number", description: "ID numérico do bloco original" },
-                          publication_type: { type: "string" },
-                          organ: { type: "string" },
-                          object_text: { type: "string" },
-                          city: { type: "string" },
-                          state: { type: "string" },
-                          is_relevant: { type: "boolean" },
-                          competitor_match: { type: "string" },
-                          section: { type: "string", enum: ["SP", "MG", "DF", "CONCORRENTES", "AVISOS_DIVERSOS"] },
+              body: JSON.stringify({
+                model: "google/gemini-2.5-flash",
+                messages: [
+                  { role: "system", content: buildSystemPrompt() },
+                  {
+                    role: "user",
+                    content: `Analise este array JSON de blocos e extraia as publicações válidas:\n\n${batchJson}`,
+                  },
+                ],
+                tools: [{
+                  type: "function",
+                  function: {
+                    name: "classify_publications",
+                    description: "Retorna as publicações estruturadas do DOU Seção 3",
+                    parameters: {
+                      type: "object",
+                      properties: {
+                        publications: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              block_id: { type: "number", description: "ID numérico do bloco original" },
+                              publication_type: { type: "string" },
+                              organ: { type: "string" },
+                              object_text: { type: "string" },
+                              city: { type: "string" },
+                              state: { type: "string" },
+                              is_relevant: { type: "boolean" },
+                              competitor_match: { type: "string" },
+                              section: { type: "string", enum: ["SP", "MG", "DF", "CONCORRENTES", "AVISOS_DIVERSOS"] },
+                            },
+                            required: ["block_id", "publication_type", "organ", "section", "is_relevant"],
+                            additionalProperties: false,
+                          },
                         },
-                        required: ["block_id", "publication_type", "organ", "section", "is_relevant"],
-                        additionalProperties: false,
                       },
+                      required: ["publications"],
+                      additionalProperties: false,
                     },
                   },
-                  required: ["publications"],
-                  additionalProperties: false,
-                },
-              },
-            }],
-            tool_choice: { type: "function", function: { name: "classify_publications" } },
-          }),
-        });
+                }],
+                tool_choice: { type: "function", function: { name: "classify_publications" } },
+              }),
+            });
 
-        if (!response.ok) {
-          if (response.status === 429) throw new Error("RATE_LIMIT");
-          if (response.status === 402) throw new Error("PAYMENT_REQUIRED");
-          const errorText = await response.text();
-          console.error(`AI gateway error (batch ${i + 1}):`, response.status, errorText);
-          throw new Error(`AI gateway error: ${response.status}`);
-        }
+            if (response.status === 429) throw new Error("RATE_LIMIT");
+            if (response.status === 402) throw new Error("PAYMENT_REQUIRED");
 
-        const aiResult = await response.json();
-        const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error(`AI gateway error (batch ${batchIndex + 1}, attempt ${attempt + 1}): ${response.status} ${errorText}`);
+              if (attempt < MAX_RETRIES) continue; // retry on 503 etc.
+              return []; // give up on this batch, don't kill others
+            }
 
-        if (toolCall?.function?.arguments) {
-          try {
-            const parsed = JSON.parse(toolCall.function.arguments);
-            const pubs = parsed.publications || [];
-            console.log(`Batch ${i + 1}: AI returned ${pubs.length} publications`);
-            return pubs;
-          } catch (parseErr) {
-            console.error(`Failed to parse AI response for batch ${i + 1}:`, parseErr);
+            const aiResult = await response.json();
+            const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
+
+            if (toolCall?.function?.arguments) {
+              try {
+                const parsed = JSON.parse(toolCall.function.arguments);
+                const pubs = parsed.publications || [];
+                console.log(`Batch ${batchIndex + 1}: AI returned ${pubs.length} publications`);
+                return pubs;
+              } catch (parseErr) {
+                console.error(`Failed to parse AI response for batch ${batchIndex + 1}:`, parseErr);
+                return [];
+              }
+            }
             return [];
+          } catch (err: any) {
+            if (err.message === "RATE_LIMIT" || err.message === "PAYMENT_REQUIRED") throw err;
+            console.error(`Batch ${batchIndex + 1} attempt ${attempt + 1} error:`, err.message);
+            if (attempt === MAX_RETRIES) return []; // exhausted retries
           }
         }
         return [];
-      })).catch((err) => {
-        if (err.message === "RATE_LIMIT") throw err;
-        if (err.message === "PAYMENT_REQUIRED") throw err;
-        throw err;
-      });
+      }
 
-      // Flatten and reconstruct full_text from block_id
-      const rawAiPubs = batchResults.flat();
-      const blockMap = new Map(blocksWithId.map(b => [b.id, b.text]));
-      aiPublications = rawAiPubs.map((pub: any) => ({
-        ...pub,
-        full_text: blockMap.get(pub.block_id) || '',
-      }));
-      console.log(`Reconstructed full_text for ${aiPublications.length} publications from block IDs`);
-    }
+      const batchResults = await Promise.allSettled(
+        batches.map((batch, i) => processBatch(batch, i))
+      );
 
-    // ── STEP 3: Post-process (competitor regex override + state classification) ──
-    const publications = postProcessPublications(aiPublications);
-    console.log(`Final: ${aiPublications.length} AI raw → ${publications.length} after post-processing`);
-
-    // ── STEP 4: Insert into database ──
-    if (publications.length > 0) {
-      const pubRecords = publications.map((pub: any) => ({
-        reading_id: readingId,
-        publication_type: pub.publication_type || "Não identificado",
-        section: pub.section || "AVISOS_DIVERSOS",
-        organ: pub.organ || null,
-        object_text: pub.object_text || null,
-        full_text: pub.full_text || "",
-        state: pub.state || null,
-        is_relevant: pub.is_relevant ?? true,
-        competitor_match: pub.competitor_match || null,
-      }));
-
+      const successfulResults: any[][] = [];
+      let failedBatches = 0;
+      for (const result of batchResults) {
+        if (result.status === "fulfilled") {
+          successfulResults.push(result.value);
+        } else {
+          failedBatches++;
+          // Re-throw hard errors (rate limit / payment)
+          if (result.reason?.message === "RATE_LIMIT") throw new Error("RATE_LIMIT");
+          if (result.reason?.message === "PAYMENT_REQUIRED") throw new Error("PAYMENT_REQUIRED");
+          console.error("Batch failed permanently:", result.reason?.message);
+        }
+      }
+      if (failedBatches > 0) {
+        console.log(`${failedBatches}/${batches.length} batches failed — proceeding with ${batches.length - failedBatches} successful`);
+      }
       const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/dou_publications`, {
         method: "POST",
         headers: {
