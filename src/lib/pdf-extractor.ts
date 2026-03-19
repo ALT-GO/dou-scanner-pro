@@ -166,33 +166,52 @@ export interface PreFilteredBlock {
 
 /**
  * Split DOU text into individual publication blocks.
- * DOU Section 3 publications are typically separated by patterns like
- * organ headers in ALL CAPS or section dividers.
+ * Uses notice-type triggers as paragraph start markers, capturing from
+ * the notice header until the next notice or organ header.
  */
 function splitIntoBlocks(text: string): string[] {
-  // DOU blocks are separated by patterns:
-  // 1. Lines that are entirely uppercase (organ/ministry headers)
-  // 2. Double newlines followed by ALL-CAPS header
-  // 3. Section markers like "SECRETARIA DE...", "MINISTÉRIO DE..."
-  
-  const headerPattern = /\n(?=(?:MINISTÉRIO|SECRETARIA|UNIVERSIDADE|INSTITUTO|AGÊNCIA|EMPRESA|FUNDAÇÃO|SUPERINTENDÊNCIA|DEPARTAMENTO|DIRETORIA|COMANDO|TRIBUNAL|CONSELHO|PRESIDÊNCIA|GABINETE|PROCURADORIA|DEFENSORIA|COMPANHIA|BANCO|CAIXA)\s)/gi;
-  
-  const blocks = text.split(headerPattern).filter(b => b.trim().length > 50);
-  
-  // If splitting produced too few blocks, try by double newlines
+  const triggerTerms = [
+    ...NOTICE_TYPES,
+    ...BLACKLIST_TERMS,
+    'EXTRATO DE DISPENSA', 'EXTRATO DE INEXIGIBILIDADE',
+  ].map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+
+  const organHeaders = [
+    'MINISTÉRIO', 'SECRETARIA', 'UNIVERSIDADE', 'INSTITUTO', 'AGÊNCIA',
+    'EMPRESA', 'FUNDAÇÃO', 'SUPERINTENDÊNCIA', 'DEPARTAMENTO', 'DIRETORIA',
+    'COMANDO', 'TRIBUNAL', 'CONSELHO', 'PRESIDÊNCIA', 'GABINETE',
+    'PROCURADORIA', 'DEFENSORIA', 'COMPANHIA', 'BANCO', 'CAIXA',
+  ].map(t => `${t}\\s`);
+
+  const allTriggers = [...triggerTerms, ...organHeaders];
+  const splitPattern = new RegExp(`\\n(?=(${allTriggers.join('|')}))`, 'gi');
+  const blocks = text.split(splitPattern).filter(b => b && b.trim().length > 50);
+
   if (blocks.length <= 1) {
     return text.split(/\n{2,}/).filter(b => b.trim().length > 50);
   }
-  
   return blocks;
 }
 
 /**
+ * Remove duplicate blocks based on normalized text fingerprint.
+ */
+function deduplicateBlocks(blocks: string[]): string[] {
+  const seen = new Set<string>();
+  return blocks.filter(block => {
+    const fingerprint = block.toLowerCase().replace(/\s+/g, ' ').trim().substring(0, 200);
+    if (seen.has(fingerprint)) return false;
+    seen.add(fingerprint);
+    return true;
+  });
+}
+
+/**
  * Apply the 4-rule pre-filter to each block before sending to AI.
- * This drastically reduces the amount of text sent to the AI gateway.
  */
 export function preFilterBlocks(text: string): { relevant: string[]; stats: { total: number; competitors: number; technical: number; discarded: number } } {
-  const blocks = splitIntoBlocks(text);
+  const rawBlocks = splitIntoBlocks(text);
+  const blocks = deduplicateBlocks(rawBlocks);
   const relevant: string[] = [];
   let competitors = 0;
   let technical = 0;

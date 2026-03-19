@@ -113,14 +113,49 @@ function matchesTechnicalScope(text: string): boolean {
 
 /**
  * Split raw DOU text into individual publication blocks.
+ * Uses notice-type triggers (Aviso de Licitação, Pregão, etc.) as paragraph start markers.
+ * Captures the full block from the notice header until the next notice or organ header.
  */
 function splitIntoBlocks(text: string): string[] {
-  const headerPattern = /\n(?=(?:MINISTÉRIO|SECRETARIA|UNIVERSIDADE|INSTITUTO|AGÊNCIA|EMPRESA|FUNDAÇÃO|SUPERINTENDÊNCIA|DEPARTAMENTO|DIRETORIA|COMANDO|TRIBUNAL|CONSELHO|PRESIDÊNCIA|GABINETE|PROCURADORIA|DEFENSORIA|COMPANHIA|BANCO|CAIXA)\s)/gi;
-  const blocks = text.split(headerPattern).filter(b => b.trim().length > 50);
+  // Build a regex that matches known notice triggers + organ headers as block starters
+  const triggerTerms = [
+    ...NOTICE_TYPES,
+    ...BLACKLIST_TERMS,
+    'EXTRATO DE DISPENSA', 'EXTRATO DE INEXIGIBILIDADE',
+  ].map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  
+  const organHeaders = [
+    'MINISTÉRIO', 'SECRETARIA', 'UNIVERSIDADE', 'INSTITUTO', 'AGÊNCIA',
+    'EMPRESA', 'FUNDAÇÃO', 'SUPERINTENDÊNCIA', 'DEPARTAMENTO', 'DIRETORIA',
+    'COMANDO', 'TRIBUNAL', 'CONSELHO', 'PRESIDÊNCIA', 'GABINETE',
+    'PROCURADORIA', 'DEFENSORIA', 'COMPANHIA', 'BANCO', 'CAIXA',
+  ].map(t => `${t}\\s`);
+
+  const allTriggers = [...triggerTerms, ...organHeaders];
+  const splitPattern = new RegExp(`\\n(?=(${allTriggers.join('|')}))`, 'gi');
+  
+  const blocks = text.split(splitPattern).filter(b => b && b.trim().length > 50);
+  
+  // Fallback: if splitting produced too few blocks, try double newlines
   if (blocks.length <= 1) {
     return text.split(/\n{2,}/).filter(b => b.trim().length > 50);
   }
+  
   return blocks;
+}
+
+/**
+ * Remove duplicate blocks based on normalized text similarity.
+ */
+function deduplicateBlocks(blocks: string[]): string[] {
+  const seen = new Set<string>();
+  return blocks.filter(block => {
+    // Normalize: lowercase, collapse whitespace, take first 200 chars as fingerprint
+    const fingerprint = block.toLowerCase().replace(/\s+/g, ' ').trim().substring(0, 200);
+    if (seen.has(fingerprint)) return false;
+    seen.add(fingerprint);
+    return true;
+  });
 }
 
 interface PreFilterResult {
@@ -134,7 +169,8 @@ interface PreFilterResult {
  * This reduces token usage dramatically by discarding irrelevant blocks.
  */
 function preFilterText(text: string): PreFilterResult {
-  const blocks = splitIntoBlocks(text);
+  const rawBlocks = splitIntoBlocks(text);
+  const blocks = deduplicateBlocks(rawBlocks);
   const relevantBlocks: string[] = [];
   const competitorBlocks: string[] = [];
   let competitors = 0, technical = 0, discarded = 0;
