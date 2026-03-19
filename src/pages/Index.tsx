@@ -17,6 +17,7 @@ interface Reading {
   total_opportunities: number;
   total_competitor_mentions: number;
   status: string;
+  created_at: string;
 }
 
 interface Publication {
@@ -37,6 +38,7 @@ export default function Index() {
   const [selectedReadingId, setSelectedReadingId] = useState<string | null>(null);
   const [publications, setPublications] = useState<Publication[]>([]);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const logIdRef = useRef(0);
 
@@ -58,7 +60,7 @@ export default function Index() {
     const { data, error } = await supabase
       .from('dou_readings')
       .select('*')
-      .order('reading_date', { ascending: false });
+      .order('created_at', { ascending: false });
     if (error) {
       console.error('Error fetching readings:', error);
       return;
@@ -207,6 +209,27 @@ export default function Index() {
     }
   };
 
+  const handleDeleteReading = async (readingId: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta leitura?')) return;
+    setDeletingId(readingId);
+    try {
+      const { error } = await supabase.functions.invoke('delete-reading', {
+        body: { readingId },
+      });
+      if (error) throw error;
+      toast.success('Leitura excluída com sucesso');
+      if (selectedReadingId === readingId) {
+        setSelectedReadingId(null);
+        setPublications([]);
+      }
+      await fetchReadings();
+    } catch {
+      toast.error('Erro ao excluir leitura');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const totalOpportunities = readings.reduce((sum, r) => sum + r.total_opportunities, 0);
   const totalCompetitorMentions = readings.reduce((sum, r) => sum + r.total_competitor_mentions, 0);
   const lastReadingDate = readings.length > 0 ? readings[0].reading_date : null;
@@ -294,7 +317,9 @@ export default function Index() {
                     readings={readings}
                     onViewReport={handleViewReport}
                     onDownloadReport={handleDownloadReport}
+                    onDeleteReading={handleDeleteReading}
                     downloadingId={downloadingId}
+                    deletingId={deletingId}
                   />
                 </div>
               </motion.div>
