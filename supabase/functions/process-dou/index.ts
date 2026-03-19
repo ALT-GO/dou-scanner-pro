@@ -245,7 +245,7 @@ const MG_CITIES = [
   'Curvelo', 'Diamantina', 'Pedro Leopoldo', 'Lagoa Santa',
   'Coronel Fabriciano', 'Timóteo', 'João Monlevade',
   'Congonhas', 'Itaúna', 'Formiga', 'Ubá', 'Cataguases',
-  'Além Paraíba', 'Leopoldina', 'Santos Dumont',
+  'Além Paraíba', 'Leopoldina',
 ];
 
 const DF_CITIES = [
