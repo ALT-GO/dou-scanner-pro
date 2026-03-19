@@ -4,7 +4,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 
 /**
  * Exhaustive technical keyword list for Orion's scope of work.
- * Used for pre-filtering publication blocks before AI analysis.
  */
 const TECHNICAL_KEYWORDS = [
   // ENGENHARIA E OBRAS
@@ -71,9 +70,6 @@ const TECHNICAL_KEYWORDS = [
   'drywall', 'forro', 'piso', 'revestimento',
 ];
 
-/**
- * Competitors + Orion (own company) — all trigger "Concorrência / Orion" capture.
- */
 const COMPETITORS = [
   'ORION', 'ORION ENGENHARIA', 'ORION ENGENHARIA E TECNOLOGIA',
   'GREEN4T', 'GLS ENGENHARIA', 'GLS', 'VIRTUAL ENGENHARIA', 'VIRTUAL',
@@ -82,18 +78,12 @@ const COMPETITORS = [
   'ACECO', 'ACECO TI', 'ATLÂNTICO ENGENHARIA', 'VIA ENGENHARIA',
 ];
 
-/**
- * Blacklisted terms indicating finalized processes — discard immediately.
- */
 const BLACKLIST_TERMS = [
   'EXTRATO DE CONTRATO', 'RESULTADO DE JULGAMENTO',
   'HOMOLOGAÇÃO', 'ADJUDICAÇÃO', 'TERMO ADITIVO',
   'EXTRATO DE ATA', 'RATIFICAÇÃO',
 ];
 
-/**
- * Valid procurement notice types.
- */
 const NOTICE_TYPES = [
   'AVISO DE LICITAÇÃO', 'AVISO DE PREGÃO', 'AVISO DE CONCORRÊNCIA',
   'AVISO DE DISPENSA', 'AVISO DE INEXIGIBILIDADE',
@@ -107,51 +97,54 @@ const NOTICE_TYPES = [
 ];
 
 /**
- * Build a regex that matches any competitor name (case-insensitive).
+ * REGRA 0 — Summary/header blacklist terms (total discard before all other rules).
  */
+const SUMMARY_BLACKLIST = [
+  'SUMÁRIO', 'ISSN 1677-7069', 'ISSN', 'IMPRENSA NACIONAL',
+  'DOCUMENTO ASSINADO DIGITALMENTE', 'REPÚBLICA FEDERATIVA DO BRASIL',
+  'DIÁRIO OFICIAL DA UNIÃO', 'CASA CIVIL',
+];
+
+/**
+ * REGRA 0: Check if a block is a DOU summary/index page or generic header.
+ */
+function isSummaryOrHeader(text: string): boolean {
+  const upper = text.toUpperCase();
+  if (SUMMARY_BLACKLIST.some(term => upper.includes(term))) return true;
+  const ministryLines = (upper.match(/MINISTÉRIO/g) || []).length;
+  if (ministryLines >= 3) return true;
+  const pageRefs = (text.match(/\.{3,}\s*\d+/g) || []).length;
+  if (pageRefs >= 3) return true;
+  return false;
+}
+
 function buildCompetitorRegex(): RegExp {
   const patterns = COMPETITORS.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   return new RegExp(`(${patterns.join('|')})`, 'gi');
 }
 
-/**
- * Build a regex that matches any technical keyword (case-insensitive, word boundary).
- */
 function buildTechnicalRegex(): RegExp {
-  // Sort by length descending so longer phrases match first
   const sorted = [...TECHNICAL_KEYWORDS].sort((a, b) => b.length - a.length);
   const patterns = sorted.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   return new RegExp(`(${patterns.join('|')})`, 'gi');
 }
 
-/**
- * Check if a text block contains any blacklisted term.
- */
 function containsBlacklist(text: string): boolean {
   const upper = text.toUpperCase();
   return BLACKLIST_TERMS.some(term => upper.includes(term));
 }
 
-/**
- * Check if a text block contains any valid notice type.
- */
 function containsNoticeType(text: string): boolean {
   const upper = text.toUpperCase();
   return NOTICE_TYPES.some(term => upper.includes(term));
 }
 
-/**
- * Check if a text block contains any competitor name.
- */
 function matchesCompetitor(text: string): string | null {
   const regex = buildCompetitorRegex();
   const match = text.match(regex);
   return match ? match[0].toUpperCase() : null;
 }
 
-/**
- * Check if a text block contains any technical keyword.
- */
 function matchesTechnicalScope(text: string): boolean {
   const regex = buildTechnicalRegex();
   return regex.test(text);
@@ -161,14 +154,9 @@ export interface PreFilteredBlock {
   text: string;
   competitorMatch: string | null;
   passedPreFilter: boolean;
-  reason: 'competitor' | 'technical_match' | 'blacklisted' | 'no_notice' | 'no_scope';
+  reason: 'competitor' | 'technical_match' | 'blacklisted' | 'no_notice' | 'no_scope' | 'summary_header';
 }
 
-/**
- * Split DOU text into individual publication blocks.
- * Uses notice-type triggers as paragraph start markers, capturing from
- * the notice header until the next notice or organ header.
- */
 function splitIntoBlocks(text: string): string[] {
   const triggerTerms = [
     ...NOTICE_TYPES,
@@ -193,9 +181,6 @@ function splitIntoBlocks(text: string): string[] {
   return blocks;
 }
 
-/**
- * Remove duplicate blocks based on normalized text fingerprint.
- */
 function deduplicateBlocks(blocks: string[]): string[] {
   const seen = new Set<string>();
   return blocks.filter(block => {
@@ -206,9 +191,6 @@ function deduplicateBlocks(blocks: string[]): string[] {
   });
 }
 
-/**
- * Apply the 4-rule pre-filter to each block before sending to AI.
- */
 export function preFilterBlocks(text: string): { relevant: string[]; stats: { total: number; competitors: number; technical: number; discarded: number } } {
   const rawBlocks = splitIntoBlocks(text);
   const blocks = deduplicateBlocks(rawBlocks);
@@ -218,6 +200,12 @@ export function preFilterBlocks(text: string): { relevant: string[]; stats: { to
   let discarded = 0;
 
   for (const block of blocks) {
+    // REGRA 0: Discard summary, index and header blocks immediately
+    if (isSummaryOrHeader(block)) {
+      discarded++;
+      continue;
+    }
+
     // RULE 1: Competitor monitoring (highest priority — bypasses all filters)
     const competitor = matchesCompetitor(block);
     if (competitor) {
@@ -249,9 +237,6 @@ export function preFilterBlocks(text: string): { relevant: string[]; stats: { to
   };
 }
 
-/**
- * Extract text from PDF and return both raw text and pre-filtered blocks.
- */
 export async function extractTextFromPDF(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -270,4 +255,4 @@ export async function extractTextFromPDF(file: File): Promise<string> {
   return fullText;
 }
 
-export { TECHNICAL_KEYWORDS, COMPETITORS, BLACKLIST_TERMS, NOTICE_TYPES };
+export { TECHNICAL_KEYWORDS, COMPETITORS, BLACKLIST_TERMS, NOTICE_TYPES, SUMMARY_BLACKLIST, isSummaryOrHeader };
