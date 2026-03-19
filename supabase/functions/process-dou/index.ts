@@ -9,11 +9,8 @@ const corsHeaders = {
 // CONSTANTS
 // ═══════════════════════════════════════════════════
 
-// Competitors + Orion (own company) — all trigger "CONCORRENTES" capture
 const COMPETITORS = [
-  // Own company and variations
   "ORION", "ORION ENGENHARIA", "ORION ENGENHARIA E TECNOLOGIA",
-  // Competitors
   "GREEN4T", "GLS ENGENHARIA", "GLS", "VIRTUAL ENGENHARIA", "VIRTUAL",
   "GEMELO", "CETEST", "KOERICH", "KOERICH ENGENHARIA",
   "MPE", "MPE ENGENHARIA", "EQS", "EQS ENGENHARIA",
@@ -24,6 +21,13 @@ const BLACKLIST_TERMS = [
   "EXTRATO DE CONTRATO", "RESULTADO DE JULGAMENTO",
   "HOMOLOGAÇÃO", "ADJUDICAÇÃO", "TERMO ADITIVO",
   "EXTRATO DE ATA", "RATIFICAÇÃO",
+];
+
+// REGRA 0 — Termos de Sumário/Cabeçalho (blacklist total, descarta antes de tudo)
+const SUMMARY_BLACKLIST = [
+  "SUMÁRIO", "ISSN 1677-7069", "ISSN", "IMPRENSA NACIONAL",
+  "DOCUMENTO ASSINADO DIGITALMENTE", "REPÚBLICA FEDERATIVA DO BRASIL",
+  "DIÁRIO OFICIAL DA UNIÃO", "CASA CIVIL",
 ];
 
 const NOTICE_TYPES = [
@@ -79,6 +83,28 @@ const TECHNICAL_KEYWORDS = [
 // PRE-FILTER FUNCTIONS (Rule-based NLP)
 // ═══════════════════════════════════════════════════
 
+/**
+ * REGRA 0: Detect if a block is a DOU summary/index page or generic header.
+ * Matches blocks containing summary blacklist terms, multiple ministry listings,
+ * or page-number index patterns (dots followed by numbers).
+ */
+function isSummaryOrHeader(text: string): boolean {
+  const upper = text.toUpperCase();
+
+  // Check explicit summary blacklist terms
+  if (SUMMARY_BLACKLIST.some(term => upper.includes(term))) return true;
+
+  // Detect index pattern: multiple "MINISTÉRIO" lines (classic summary page)
+  const ministryLines = (upper.match(/MINISTÉRIO/g) || []).length;
+  if (ministryLines >= 3) return true;
+
+  // Detect page-number index pattern: lines like "Ministério da Saúde ......... 45"
+  const pageRefs = (text.match(/\.{3,}\s*\d+/g) || []).length;
+  if (pageRefs >= 3) return true;
+
+  return false;
+}
+
 function buildCompetitorRegex(): RegExp {
   const patterns = COMPETITORS.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   return new RegExp(`(${patterns.join('|')})`, 'gi');
@@ -111,13 +137,7 @@ function matchesTechnicalScope(text: string): boolean {
   return regex.test(text);
 }
 
-/**
- * Split raw DOU text into individual publication blocks.
- * Uses notice-type triggers (Aviso de Licitação, Pregão, etc.) as paragraph start markers.
- * Captures the full block from the notice header until the next notice or organ header.
- */
 function splitIntoBlocks(text: string): string[] {
-  // Build a regex that matches known notice triggers + organ headers as block starters
   const triggerTerms = [
     ...NOTICE_TYPES,
     ...BLACKLIST_TERMS,
@@ -136,7 +156,6 @@ function splitIntoBlocks(text: string): string[] {
   
   const blocks = text.split(splitPattern).filter(b => b && b.trim().length > 50);
   
-  // Fallback: if splitting produced too few blocks, try double newlines
   if (blocks.length <= 1) {
     return text.split(/\n{2,}/).filter(b => b.trim().length > 50);
   }
@@ -144,13 +163,9 @@ function splitIntoBlocks(text: string): string[] {
   return blocks;
 }
 
-/**
- * Remove duplicate blocks based on normalized text similarity.
- */
 function deduplicateBlocks(blocks: string[]): string[] {
   const seen = new Set<string>();
   return blocks.filter(block => {
-    // Normalize: lowercase, collapse whitespace, take first 200 chars as fingerprint
     const fingerprint = block.toLowerCase().replace(/\s+/g, ' ').trim().substring(0, 200);
     if (seen.has(fingerprint)) return false;
     seen.add(fingerprint);
@@ -164,10 +179,6 @@ interface PreFilterResult {
   stats: { total: number; competitors: number; technical: number; discarded: number };
 }
 
-/**
- * Apply the 4-rule pre-filter BEFORE sending to AI.
- * This reduces token usage dramatically by discarding irrelevant blocks.
- */
 function preFilterText(text: string): PreFilterResult {
   const rawBlocks = splitIntoBlocks(text);
   const blocks = deduplicateBlocks(rawBlocks);
@@ -176,6 +187,9 @@ function preFilterText(text: string): PreFilterResult {
   let competitors = 0, technical = 0, discarded = 0;
 
   for (const block of blocks) {
+    // REGRA 0: Discard summary, index and header blocks immediately
+    if (isSummaryOrHeader(block)) { discarded++; continue; }
+
     // RULE 1: Competitor match — capture immediately, bypass all other filters
     if (matchesCompetitor(block)) {
       competitorBlocks.push(block);
@@ -202,7 +216,6 @@ function preFilterText(text: string): PreFilterResult {
 // GEOLOCATION & REGIONAL CLASSIFICATION
 // ═══════════════════════════════════════════════════
 
-// Exhaustive city lists for priority states
 const SP_CITIES = [
   'São Paulo', 'Campinas', 'Santos', 'São José dos Campos', 'Ribeirão Preto',
   'Guarulhos', 'Sorocaba', 'São Bernardo do Campo', 'São Bernardo', 'Osasco',
@@ -252,14 +265,12 @@ const DF_CITIES = [
   'Jardim Botânico', 'Vicente Pires', 'SIA', 'SAAN', 'Sudoeste', 'Noroeste',
 ];
 
-// Organs/entities that identify priority states
 const STATE_ORGANS = [
-  { pattern: /\b(Governo do Distrito Federal|GDF|TCDF|CLDF|MPDFT|PGDF|SES[\-\/]DF|SEE[\-\/]DF|NOVACAP|CAESB|CEB|TERRACAP|METRÔ[\-\/]DF)\b/gi, state: 'DF' },
-  { pattern: /\b(Governo do Estado de São Paulo|SABESP|CPTM|CDHU|DERSA|DER[\-\/]SP|ARTESP|IMESP|PRODESP|CPOS|FDE|IPT|UNICAMP|UNESP|USP)\b/gi, state: 'SP' },
-  { pattern: /\b(Governo do Estado de Minas Gerais|CEMIG|COPASA|DER[\-\/]MG|DEOP[\-\/]MG|CODEMIG|UFMG|UFJF|UFU|UFLA|UFV)\b/gi, state: 'MG' },
+  { pattern: /\b(Governo do Distrito Federal|GDF|TCDF|CLDF|MPDFT|PGDF|SES[-\/]DF|SEE[-\/]DF|NOVACAP|CAESB|CEB|TERRACAP|METRÔ[-\/]DF)\b/gi, state: 'DF' },
+  { pattern: /\b(Governo do Estado de São Paulo|SABESP|CPTM|CDHU|DERSA|DER[-\/]SP|ARTESP|IMESP|PRODESP|CPOS|FDE|IPT|UNICAMP|UNESP|USP)\b/gi, state: 'SP' },
+  { pattern: /\b(Governo do Estado de Minas Gerais|CEMIG|COPASA|DER[-\/]MG|DEOP[-\/]MG|CODEMIG|UFMG|UFJF|UFU|UFLA|UFV)\b/gi, state: 'MG' },
 ];
 
-// State names in full text
 const STATE_FULL_NAMES: [RegExp, string][] = [
   [/\bSão Paulo\b/gi, 'SP'],
   [/\bMinas Gerais\b/gi, 'MG'],
@@ -276,27 +287,23 @@ const MG_REGEX = buildCityRegex(MG_CITIES);
 const DF_REGEX = buildCityRegex(DF_CITIES);
 
 function detectState(text: string): string | null {
-  // 1. Check explicit UF patterns (Cidade/UF, Cidade-UF)
-  const ufPattern = /(?:[A-Za-zÀ-ÿ\s]+)[\/\-–—]\s*(SP|MG|DF|RJ|BA|PR|RS|SC|GO|PE|CE|PA|MA|MT|MS|ES|PB|RN|AL|PI|SE|TO|RO|AC|AP|AM|RR)\b/gi;
+  const ufPattern = /(?:[A-Za-zÀ-ÿ\s]+)[\/–—-]\s*(SP|MG|DF|RJ|BA|PR|RS|SC|GO|PE|CE|PA|MA|MT|MS|ES|PB|RN|AL|PI|SE|TO|RO|AC|AP|AM|RR)\b/gi;
   const ufMatches = [...text.matchAll(ufPattern)];
   for (const m of ufMatches) {
     const uf = m[1].toUpperCase();
     if (['SP', 'MG', 'DF'].includes(uf)) return uf;
   }
 
-  // 2. Check state organs/entities
   for (const { pattern, state } of STATE_ORGANS) {
     if (pattern.test(text)) { pattern.lastIndex = 0; return state; }
     pattern.lastIndex = 0;
   }
 
-  // 3. Check full state names
   for (const [regex, state] of STATE_FULL_NAMES) {
     if (regex.test(text)) { regex.lastIndex = 0; return state; }
     regex.lastIndex = 0;
   }
 
-  // 4. Check city names (priority order: DF first due to Brasília ambiguity)
   if (DF_REGEX.test(text)) { DF_REGEX.lastIndex = 0; return 'DF'; }
   DF_REGEX.lastIndex = 0;
   if (SP_REGEX.test(text)) { SP_REGEX.lastIndex = 0; return 'SP'; }
@@ -304,7 +311,6 @@ function detectState(text: string): string | null {
   if (MG_REGEX.test(text)) { MG_REGEX.lastIndex = 0; return 'MG'; }
   MG_REGEX.lastIndex = 0;
 
-  // 5. Any other UF found → return it (will become AVISOS_DIVERSOS)
   if (ufMatches.length > 0) return ufMatches[0][1].toUpperCase();
   return null;
 }
@@ -319,14 +325,12 @@ function postProcessPublications(publications: any[]): any[] {
   return publications.map((pub: any) => {
     const fullText = [pub.full_text, pub.object_text, pub.organ].filter(Boolean).join(' ');
 
-    // Double-check competitor override
     const compMatch = fullText.match(competitorRegex);
     competitorRegex.lastIndex = 0;
     if (compMatch) {
       return { ...pub, section: 'CONCORRENTES', competitor_match: compMatch[0].toUpperCase(), is_relevant: true };
     }
 
-    // State classification
     const detectedState = detectState(fullText);
     const finalState = detectedState || pub.state || null;
     const finalSection = finalState && ['SP', 'MG', 'DF'].includes(finalState) ? finalState : 'AVISOS_DIVERSOS';
@@ -341,7 +345,18 @@ function postProcessPublications(publications: any[]): any[] {
 function buildSystemPrompt(): string {
   return `Você é um especialista em análise de publicações do Diário Oficial da União (DOU) - Seção 3.
 
-CONTEXTO: Você receberá blocos de texto que JÁ PASSARAM por um pré-filtro de palavras-chave. Todos os blocos recebidos contêm termos técnicos relevantes. Sua tarefa é extrair e estruturar os dados de cada publicação.
+════════════════════════════════════════
+REGRA 0 — IGNORAR SUMÁRIO, ÍNDICES E CABEÇALHOS (BLACKLIST TOTAL)
+════════════════════════════════════════
+Se o bloco de texto for o SUMÁRIO do Diário Oficial (listando ministérios, órgãos e números de página) ou apenas um cabeçalho genérico (ex: 'REPÚBLICA FEDERATIVA DO BRASIL', 'IMPRENSA NACIONAL', 'Sumário', 'ISSN'), IGNORE-O COMPLETAMENTE.
+NUNCA classifique o Sumário como uma publicação válida, mesmo que contenha a palavra 'DF', 'Brasília', nomes de empresas ou palavras do escopo técnico.
+Uma publicação válida SEMPRE descreve um ato administrativo (Aviso, Extrato, Edital) e possui um texto corrido com objeto, não uma lista de páginas.
+Se o bloco parecer ser um sumário ou índice, retorne is_relevant = false.
+
+════════════════════════════════════════
+CONTEXTO
+════════════════════════════════════════
+Você receberá blocos de texto que JÁ PASSARAM por um pré-filtro de palavras-chave. Todos os blocos recebidos contêm termos técnicos relevantes. Sua tarefa é extrair e estruturar os dados de cada publicação.
 
 Para CADA bloco de texto recebido, extraia:
 - publication_type: modalidade (Pregão Eletrônico, Concorrência, Dispensa, etc.)
@@ -350,7 +365,7 @@ Para CADA bloco de texto recebido, extraia:
 - full_text: texto completo do bloco
 - city: cidade identificada
 - state: UF (SP, MG, DF, PE, etc.)
-- is_relevant: true (os blocos já foram pré-filtrados)
+- is_relevant: true se for uma publicação válida (ato administrativo), false se for sumário/lixo
 - competitor_match: nome do concorrente encontrado ou null
 - section: classificação ("SP", "MG", "DF", "CONCORRENTES", "AVISOS_DIVERSOS")
 
@@ -364,7 +379,7 @@ REGRAS DE CLASSIFICAÇÃO:
 Concorrentes monitorados:
 ${COMPETITORS.map(c => `- ${c}`).join('\n')}
 
-IMPORTANTE: Retorne TODAS as publicações. Não omita nenhuma.`;
+IMPORTANTE: Retorne TODAS as publicações válidas. Não omita nenhuma. Descarte sumários e índices.`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -411,7 +426,6 @@ serve(async (req) => {
     let aiPublications: any[] = [];
 
     if (relevantBlocks.length > 0) {
-      // Join relevant blocks and chunk if needed
       const relevantText = relevantBlocks.join('\n\n---BLOCO---\n\n');
       const maxChars = 100000;
       const chunks: string[] = [];
@@ -557,7 +571,6 @@ serve(async (req) => {
     const opportunities = publications.filter((p: any) => ["SP", "MG", "DF", "AVISOS_DIVERSOS"].includes(p.section)).length;
     const competitorMentions = publications.filter((p: any) => p.section === "CONCORRENTES").length;
 
-    // Update reading status
     const updateRes = await fetch(`${SUPABASE_URL}/rest/v1/dou_readings?id=eq.${readingId}`, {
       method: "PATCH",
       headers: {
