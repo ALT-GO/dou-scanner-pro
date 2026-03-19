@@ -38,6 +38,7 @@ export default function Index() {
   const [selectedReadingId, setSelectedReadingId] = useState<string | null>(null);
   const [publications, setPublications] = useState<Publication[]>([]);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const logIdRef = useRef(0);
 
