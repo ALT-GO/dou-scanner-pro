@@ -118,8 +118,9 @@ function isSummaryOrHeader(text: string): boolean {
 }
 
 function buildCompetitorRegex(): RegExp {
-  const patterns = COMPETITORS.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  return new RegExp(`(${patterns.join('|')})`, 'gi');
+  const sorted = [...COMPETITORS].sort((a, b) => b.length - a.length);
+  const patterns = sorted.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(`\\b(${patterns.join('|')})\\b`, 'gi');
 }
 
 function buildTechnicalRegex(): RegExp {
