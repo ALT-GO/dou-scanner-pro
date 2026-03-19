@@ -27,10 +27,13 @@ const levelConfig: Record<LogLevel, { icon: typeof Info; color: string }> = {
 };
 
 export function ProcessingLog({ logs, visible }: ProcessingLogProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = scrollContainerRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [logs]);
 
   if (!visible || logs.length === 0) return null;
