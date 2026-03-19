@@ -460,6 +460,12 @@ REGRAS DE CLASSIFICAÇÃO GEOGRÁFICA (RIGOROSAS):
 5. QUALQUER OUTRO ESTADO → section = "AVISOS_DIVERSOS"
 6. Se não foi possível identificar o estado → section = "AVISOS_DIVERSOS"
 
+REGRA CRÍTICA DE CLASSIFICAÇÃO GEOGRÁFICA:
+A classificação do Estado (UF) deve ser baseada ÚNICA E EXCLUSIVAMENTE na cidade/estado onde o serviço será executado ou na localização da Prefeitura/órgão demandante.
+IGNORE COMPLETAMENTE siglas de UF isoladas que apareçam apenas no NOME do órgão licitante (ex: "CESUP - SP", "2ª Região - SP", "Gerência Regional/SP").
+Exemplo: Se o órgão é "CESUP - SP" mas o serviço será executado em Salvador/BA, o state DEVE ser "BA" e section DEVE ser "AVISOS_DIVERSOS".
+Se o órgão é "Superintendência Regional/SP" mas a cidade de execução é Andirá/PR, o state DEVE ser "PR" e section DEVE ser "AVISOS_DIVERSOS".
+
 NUNCA faça fallback para SP, MG ou DF em caso de dúvida. Na dúvida, use "AVISOS_DIVERSOS".
 
 Concorrentes monitorados:

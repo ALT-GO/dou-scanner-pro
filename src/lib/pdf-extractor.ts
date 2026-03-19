@@ -207,10 +207,13 @@ export function preFilterBlocks(text: string): { relevant: string[]; stats: { to
   for (const block of blocks) {
     if (isSummaryOrHeader(block)) { discarded++; continue; }
 
+    // BLACKLIST SOBERANA — prioridade absoluta, antes de concorrentes
+    if (containsBlacklist(block)) { discarded++; continue; }
+
     const competitor = matchesCompetitor(block);
     if (competitor) { relevant.push(block); competitors++; continue; }
 
-    if (containsBlacklist(block) || !containsNoticeType(block)) { discarded++; continue; }
+    if (!containsNoticeType(block)) { discarded++; continue; }
     if (!matchesTechnicalScope(block)) { discarded++; continue; }
 
     relevant.push(block);
