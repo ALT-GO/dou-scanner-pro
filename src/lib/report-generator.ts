@@ -91,6 +91,7 @@ function createMainSectionHeader(text: string): Paragraph[] {
 
 function createSubSectionHeader(text: string): Paragraph {
   return new Paragraph({
+    heading: HeadingLevel.HEADING_2,
     children: [
       new TextRun({
         text,
