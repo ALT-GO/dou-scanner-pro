@@ -1,4 +1,4 @@
-import { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle } from 'docx';
+import { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, HeadingLevel, TableOfContents } from 'docx';
 import { saveAs } from 'file-saver';
 import { buildHighlightRegex, COMPETITORS } from './keywords';
 
@@ -72,6 +72,7 @@ function createMainSectionHeader(text: string): Paragraph[] {
   return [
     new Paragraph({ spacing: { before: 600 }, children: [] }),
     new Paragraph({
+      heading: HeadingLevel.HEADING_1,
       children: [
         new TextRun({
           text: text.toUpperCase(),
@@ -90,6 +91,7 @@ function createMainSectionHeader(text: string): Paragraph[] {
 
 function createSubSectionHeader(text: string): Paragraph {
   return new Paragraph({
+    heading: HeadingLevel.HEADING_2,
     children: [
       new TextRun({
         text,
@@ -220,7 +222,7 @@ export async function generateReport(
 ): Promise<void> {
   const formattedDate = new Date(readingDate).toLocaleDateString('pt-BR');
 
-  const children: Paragraph[] = [
+  const children: (Paragraph | TableOfContents)[] = [
     // Title block
     new Paragraph({ spacing: { before: 200 }, children: [] }),
     new Paragraph({
@@ -271,6 +273,12 @@ export async function generateReport(
       border: { bottom: { style: BorderStyle.SINGLE, size: 3, color: ACCENT_COLOR } },
       spacing: { after: 300 },
     }),
+    // Table of Contents for navigation
+    new Paragraph({ spacing: { before: 200 }, children: [
+      new TextRun({ text: 'SUMÁRIO', bold: true, size: 26, color: ACCENT_COLOR, font: 'Arial' }),
+    ]}),
+    new TableOfContents("Sumário", { hyperlink: true, headingStyleRange: "1-2" }),
+    new Paragraph({ spacing: { after: 300 }, children: [] }),
   ];
 
   // ── SECTION 1: LICITAÇÕES (por região) ──
@@ -321,6 +329,26 @@ export async function generateReport(
           run: { font: 'Arial', size: 20 },
         },
       },
+      paragraphStyles: [
+        {
+          id: "Heading1",
+          name: "Heading 1",
+          basedOn: "Normal",
+          next: "Normal",
+          quickFormat: true,
+          run: { size: 30, bold: true, font: 'Arial', color: 'FFFFFF' },
+          paragraph: { spacing: { before: 600, after: 200 }, outlineLevel: 0 },
+        },
+        {
+          id: "Heading2",
+          name: "Heading 2",
+          basedOn: "Normal",
+          next: "Normal",
+          quickFormat: true,
+          run: { size: 24, bold: true, font: 'Arial', color: ACCENT_COLOR },
+          paragraph: { spacing: { before: 400, after: 160 }, outlineLevel: 1 },
+        },
+      ],
     },
     sections: [{
       properties: {
