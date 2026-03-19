@@ -9,10 +9,15 @@ const corsHeaders = {
 // CONSTANTS
 // ═══════════════════════════════════════════════════
 
+// Competitors + Orion (own company) — all trigger "CONCORRENTES" capture
 const COMPETITORS = [
-  "ORION ENGENHARIA", "EQS", "GREEN4T", "GLS", "GEMELO",
-  "CETEST", "ACECO", "KOERICH", "MPE",
-  "ATLÂNTICO ENGENHARIA", "VIRTUAL", "VIA ENGENHARIA",
+  // Own company and variations
+  "ORION", "ORION ENGENHARIA", "ORION ENGENHARIA E TECNOLOGIA",
+  // Competitors
+  "GREEN4T", "GLS ENGENHARIA", "GLS", "VIRTUAL ENGENHARIA", "VIRTUAL",
+  "GEMELO", "CETEST", "KOERICH", "KOERICH ENGENHARIA",
+  "MPE", "MPE ENGENHARIA", "EQS", "EQS ENGENHARIA",
+  "ACECO", "ACECO TI", "ATLÂNTICO ENGENHARIA", "VIA ENGENHARIA",
 ];
 
 const BLACKLIST_TERMS = [
