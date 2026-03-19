@@ -23,7 +23,6 @@ const BLACKLIST_TERMS = [
   "EXTRATO DE ATA", "RATIFICAÇÃO",
 ];
 
-// REGRA 0 — Termos de Sumário/Cabeçalho (blacklist total, descarta antes de tudo)
 const SUMMARY_BLACKLIST = [
   "SUMÁRIO", "ISSN 1677-7069", "ISSN", "IMPRENSA NACIONAL",
   "DOCUMENTO ASSINADO DIGITALMENTE", "REPÚBLICA FEDERATIVA DO BRASIL",
@@ -83,25 +82,13 @@ const TECHNICAL_KEYWORDS = [
 // PRE-FILTER FUNCTIONS (Rule-based NLP)
 // ═══════════════════════════════════════════════════
 
-/**
- * REGRA 0: Detect if a block is a DOU summary/index page or generic header.
- * Matches blocks containing summary blacklist terms, multiple ministry listings,
- * or page-number index patterns (dots followed by numbers).
- */
 function isSummaryOrHeader(text: string): boolean {
   const upper = text.toUpperCase();
-
-  // Check explicit summary blacklist terms
   if (SUMMARY_BLACKLIST.some(term => upper.includes(term))) return true;
-
-  // Detect index pattern: multiple "MINISTÉRIO" lines (classic summary page)
   const ministryLines = (upper.match(/MINISTÉRIO/g) || []).length;
   if (ministryLines >= 3) return true;
-
-  // Detect page-number index pattern: lines like "Ministério da Saúde ......... 45"
   const pageRefs = (text.match(/\.{3,}\s*\d+/g) || []).length;
   if (pageRefs >= 3) return true;
-
   return false;
 }
 
@@ -137,6 +124,10 @@ function matchesTechnicalScope(text: string): boolean {
   return regex.test(text);
 }
 
+/**
+ * Split raw DOU text into individual publication blocks.
+ * Tolerant regex: matches \n OR 3+ whitespace chars (column breaks in DOU PDFs).
+ */
 function splitIntoBlocks(text: string): string[] {
   const triggerTerms = [
     ...NOTICE_TYPES,
@@ -152,7 +143,7 @@ function splitIntoBlocks(text: string): string[] {
   ].map(t => `${t}\\s`);
 
   const allTriggers = [...triggerTerms, ...organHeaders];
-  const splitPattern = new RegExp(`\\n(?=(${allTriggers.join('|')}))`, 'gi');
+  const splitPattern = new RegExp(`(?:\\n|\\s{3,})(?=(${allTriggers.join('|')}))`, 'gi');
   
   const blocks = text.split(splitPattern).filter(b => b && b.trim().length > 50);
   
@@ -175,24 +166,26 @@ function deduplicateBlocks(blocks: string[]): string[] {
 
 interface PreFilterResult {
   relevantBlocks: string[];
-  competitorBlocks: string[];
   stats: { total: number; competitors: number; technical: number; discarded: number };
 }
 
+/**
+ * Apply pre-filter rules. Competitor blocks now go into relevantBlocks
+ * so they are sent to AI for full structured extraction.
+ */
 function preFilterText(text: string): PreFilterResult {
   const rawBlocks = splitIntoBlocks(text);
   const blocks = deduplicateBlocks(rawBlocks);
   const relevantBlocks: string[] = [];
-  const competitorBlocks: string[] = [];
   let competitors = 0, technical = 0, discarded = 0;
 
   for (const block of blocks) {
     // REGRA 0: Discard summary, index and header blocks immediately
     if (isSummaryOrHeader(block)) { discarded++; continue; }
 
-    // RULE 1: Competitor match — capture immediately, bypass all other filters
+    // RULE 1: Competitor match — push to relevantBlocks (AI will extract organ/object)
     if (matchesCompetitor(block)) {
-      competitorBlocks.push(block);
+      relevantBlocks.push(block);
       competitors++;
       continue;
     }
@@ -209,7 +202,7 @@ function preFilterText(text: string): PreFilterResult {
     technical++;
   }
 
-  return { relevantBlocks, competitorBlocks, stats: { total: blocks.length, competitors, technical, discarded } };
+  return { relevantBlocks, stats: { total: blocks.length, competitors, technical, discarded } };
 }
 
 // ═══════════════════════════════════════════════════
@@ -266,9 +259,9 @@ const DF_CITIES = [
 ];
 
 const STATE_ORGANS = [
-  { pattern: /\b(Governo do Distrito Federal|GDF|TCDF|CLDF|MPDFT|PGDF|SES[-\/]DF|SEE[-\/]DF|NOVACAP|CAESB|CEB|TERRACAP|METRÔ[-\/]DF)\b/gi, state: 'DF' },
-  { pattern: /\b(Governo do Estado de São Paulo|SABESP|CPTM|CDHU|DERSA|DER[-\/]SP|ARTESP|IMESP|PRODESP|CPOS|FDE|IPT|UNICAMP|UNESP|USP)\b/gi, state: 'SP' },
-  { pattern: /\b(Governo do Estado de Minas Gerais|CEMIG|COPASA|DER[-\/]MG|DEOP[-\/]MG|CODEMIG|UFMG|UFJF|UFU|UFLA|UFV)\b/gi, state: 'MG' },
+  { pattern: /\b(Governo do Distrito Federal|GDF|TCDF|CLDF|MPDFT|PGDF|SES[\-\/]DF|SEE[\-\/]DF|NOVACAP|CAESB|CEB|TERRACAP|METRÔ[\-\/]DF)\b/gi, state: 'DF' },
+  { pattern: /\b(Governo do Estado de São Paulo|SABESP|CPTM|CDHU|DERSA|DER[\-\/]SP|ARTESP|IMESP|PRODESP|CPOS|FDE|IPT|UNICAMP|UNESP|USP)\b/gi, state: 'SP' },
+  { pattern: /\b(Governo do Estado de Minas Gerais|CEMIG|COPASA|DER[\-\/]MG|DEOP[\-\/]MG|CODEMIG|UFMG|UFJF|UFU|UFLA|UFV)\b/gi, state: 'MG' },
 ];
 
 const STATE_FULL_NAMES: [RegExp, string][] = [
@@ -287,7 +280,7 @@ const MG_REGEX = buildCityRegex(MG_CITIES);
 const DF_REGEX = buildCityRegex(DF_CITIES);
 
 function detectState(text: string): string | null {
-  const ufPattern = /(?:[A-Za-zÀ-ÿ\s]+)[\/–—-]\s*(SP|MG|DF|RJ|BA|PR|RS|SC|GO|PE|CE|PA|MA|MT|MS|ES|PB|RN|AL|PI|SE|TO|RO|AC|AP|AM|RR)\b/gi;
+  const ufPattern = /(?:[A-Za-zÀ-ÿ\s]+)[\/\-–—]\s*(SP|MG|DF|RJ|BA|PR|RS|SC|GO|PE|CE|PA|MA|MT|MS|ES|PB|RN|AL|PI|SE|TO|RO|AC|AP|AM|RR)\b/gi;
   const ufMatches = [...text.matchAll(ufPattern)];
   for (const m of ufMatches) {
     const uf = m[1].toUpperCase();
@@ -339,7 +332,7 @@ function postProcessPublications(publications: any[]): any[] {
 }
 
 // ═══════════════════════════════════════════════════
-// AI PROMPT (only for pre-filtered relevant blocks)
+// AI PROMPT
 // ═══════════════════════════════════════════════════
 
 function buildSystemPrompt(): string {
@@ -362,7 +355,7 @@ Para CADA bloco de texto recebido, extraia:
 - publication_type: modalidade (Pregão Eletrônico, Concorrência, Dispensa, etc.)
 - organ: nome do órgão publicador
 - object_text: texto do campo "Objeto" da contratação
-- full_text: texto completo do bloco
+- full_text: texto completo do bloco (SEM truncar, mantenha o texto integral)
 - city: cidade identificada
 - state: UF (SP, MG, DF, PE, etc.)
 - is_relevant: true se for uma publicação válida (ato administrativo), false se for sumário/lixo
@@ -379,7 +372,7 @@ REGRAS DE CLASSIFICAÇÃO:
 Concorrentes monitorados:
 ${COMPETITORS.map(c => `- ${c}`).join('\n')}
 
-IMPORTANTE: Retorne TODAS as publicações válidas. Não omita nenhuma. Descarte sumários e índices.`;
+IMPORTANTE: Retorne TODAS as publicações válidas. Não omita nenhuma. Descarte sumários e índices. Mantenha o texto completo de cada bloco.`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -402,27 +395,11 @@ serve(async (req) => {
     console.log(`Processing DOU text: ${text.length} chars for reading ${readingId}`);
 
     // ── STEP 1: Pre-filter with keyword-based NLP ──
-    const { relevantBlocks, competitorBlocks, stats } = preFilterText(text);
+    // All relevant blocks (including competitor matches) go into relevantBlocks
+    const { relevantBlocks, stats } = preFilterText(text);
     console.log(`Pre-filter: ${stats.total} blocks → ${stats.competitors} competitors, ${stats.technical} technical, ${stats.discarded} discarded`);
 
-    // ── STEP 2: Build competitor publications directly (no AI needed) ──
-    const competitorPublications = competitorBlocks.map(block => {
-      const competitor = matchesCompetitor(block)!;
-      const state = detectState(block);
-      return {
-        publication_type: "Monitoramento de Concorrente",
-        organ: null,
-        object_text: null,
-        full_text: block.substring(0, 2000),
-        city: null,
-        state,
-        is_relevant: true,
-        competitor_match: competitor,
-        section: "CONCORRENTES" as const,
-      };
-    });
-
-    // ── STEP 3: Send only relevant blocks to AI for structured extraction ──
+    // ── STEP 2: Send ALL relevant blocks to AI for structured extraction ──
     let aiPublications: any[] = [];
 
     if (relevantBlocks.length > 0) {
@@ -533,12 +510,11 @@ serve(async (req) => {
       }
     }
 
-    // ── STEP 4: Merge and post-process ──
-    const allRaw = [...competitorPublications, ...aiPublications];
-    const publications = postProcessPublications(allRaw);
-    console.log(`Final: ${competitorPublications.length} competitor + ${aiPublications.length} AI → ${publications.length} total`);
+    // ── STEP 3: Post-process (competitor regex override + state classification) ──
+    const publications = postProcessPublications(aiPublications);
+    console.log(`Final: ${aiPublications.length} AI raw → ${publications.length} after post-processing`);
 
-    // ── STEP 5: Insert into database ──
+    // ── STEP 4: Insert into database ──
     if (publications.length > 0) {
       const pubRecords = publications.map((pub: any) => ({
         reading_id: readingId,

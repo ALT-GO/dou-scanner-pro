@@ -96,18 +96,12 @@ const NOTICE_TYPES = [
   'PREGÃO ELETRÔNICO', 'CONCORRÊNCIA ELETRÔNICA', 'CONCORRÊNCIA PÚBLICA',
 ];
 
-/**
- * REGRA 0 — Summary/header blacklist terms (total discard before all other rules).
- */
 const SUMMARY_BLACKLIST = [
   'SUMÁRIO', 'ISSN 1677-7069', 'ISSN', 'IMPRENSA NACIONAL',
   'DOCUMENTO ASSINADO DIGITALMENTE', 'REPÚBLICA FEDERATIVA DO BRASIL',
   'DIÁRIO OFICIAL DA UNIÃO', 'CASA CIVIL',
 ];
 
-/**
- * REGRA 0: Check if a block is a DOU summary/index page or generic header.
- */
 function isSummaryOrHeader(text: string): boolean {
   const upper = text.toUpperCase();
   if (SUMMARY_BLACKLIST.some(term => upper.includes(term))) return true;
@@ -157,6 +151,11 @@ export interface PreFilteredBlock {
   reason: 'competitor' | 'technical_match' | 'blacklisted' | 'no_notice' | 'no_scope' | 'summary_header';
 }
 
+/**
+ * Split DOU text into individual publication blocks.
+ * Uses notice-type triggers as paragraph start markers.
+ * Tolerant regex: matches \n OR 3+ whitespace chars (for column breaks in DOU PDFs).
+ */
 function splitIntoBlocks(text: string): string[] {
   const triggerTerms = [
     ...NOTICE_TYPES,
@@ -172,7 +171,7 @@ function splitIntoBlocks(text: string): string[] {
   ].map(t => `${t}\\s`);
 
   const allTriggers = [...triggerTerms, ...organHeaders];
-  const splitPattern = new RegExp(`\\n(?=(${allTriggers.join('|')}))`, 'gi');
+  const splitPattern = new RegExp(`(?:\\n|\\s{3,})(?=(${allTriggers.join('|')}))`, 'gi');
   const blocks = text.split(splitPattern).filter(b => b && b.trim().length > 50);
 
   if (blocks.length <= 1) {
@@ -200,43 +199,24 @@ export function preFilterBlocks(text: string): { relevant: string[]; stats: { to
   let discarded = 0;
 
   for (const block of blocks) {
-    // REGRA 0: Discard summary, index and header blocks immediately
-    if (isSummaryOrHeader(block)) {
-      discarded++;
-      continue;
-    }
+    if (isSummaryOrHeader(block)) { discarded++; continue; }
 
-    // RULE 1: Competitor monitoring (highest priority — bypasses all filters)
     const competitor = matchesCompetitor(block);
-    if (competitor) {
-      relevant.push(block);
-      competitors++;
-      continue;
-    }
+    if (competitor) { relevant.push(block); competitors++; continue; }
 
-    // RULE 2: Must contain a valid notice type
-    if (containsBlacklist(block) || !containsNoticeType(block)) {
-      discarded++;
-      continue;
-    }
+    if (containsBlacklist(block) || !containsNoticeType(block)) { discarded++; continue; }
+    if (!matchesTechnicalScope(block)) { discarded++; continue; }
 
-    // RULE 3: Must match technical scope
-    if (!matchesTechnicalScope(block)) {
-      discarded++;
-      continue;
-    }
-
-    // Passed all filters
     relevant.push(block);
     technical++;
   }
 
-  return {
-    relevant,
-    stats: { total: blocks.length, competitors, technical, discarded },
-  };
+  return { relevant, stats: { total: blocks.length, competitors, technical, discarded } };
 }
 
+/**
+ * Extract text from PDF preserving line breaks using item.hasEOL.
+ */
 export async function extractTextFromPDF(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -246,9 +226,15 @@ export async function extractTextFromPDF(file: File): Promise<string> {
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const textContent = await page.getTextContent();
-    const pageText = textContent.items
-      .map((item: any) => item.str)
-      .join(' ');
+    let pageText = '';
+    for (const item of textContent.items as any[]) {
+      pageText += item.str;
+      if (item.hasEOL) {
+        pageText += '\n';
+      } else {
+        pageText += ' ';
+      }
+    }
     fullText += pageText + '\n';
   }
 
