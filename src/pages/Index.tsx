@@ -17,6 +17,7 @@ interface Reading {
   total_opportunities: number;
   total_competitor_mentions: number;
   status: string;
+  created_at: string;
 }
 
 interface Publication {
