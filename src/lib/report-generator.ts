@@ -222,7 +222,7 @@ export async function generateReport(
 ): Promise<void> {
   const formattedDate = new Date(readingDate).toLocaleDateString('pt-BR');
 
-  const children: Paragraph[] = [
+  const children: (Paragraph | TableOfContents)[] = [
     // Title block
     new Paragraph({ spacing: { before: 200 }, children: [] }),
     new Paragraph({
