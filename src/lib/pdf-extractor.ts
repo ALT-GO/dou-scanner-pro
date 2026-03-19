@@ -171,7 +171,7 @@ function splitIntoBlocks(text: string): string[] {
   ].map(t => `${t}\\s`);
 
   const allTriggers = [...triggerTerms, ...organHeaders];
-  const splitPattern = new RegExp(`(?:\\n|\\s{3,})(?=(${allTriggers.join('|')}))`, 'gi');
+  const splitPattern = new RegExp(`(?:\\n|\\s{3,})(?=(?:${allTriggers.join('|')}))`, 'gi');
   const blocks = text.split(splitPattern).filter(b => b && b.trim().length > 50);
 
   if (blocks.length <= 1) {

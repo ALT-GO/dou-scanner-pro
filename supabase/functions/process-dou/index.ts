@@ -143,7 +143,7 @@ function splitIntoBlocks(text: string): string[] {
   ].map(t => `${t}\\s`);
 
   const allTriggers = [...triggerTerms, ...organHeaders];
-  const splitPattern = new RegExp(`(?:\\n|\\s{3,})(?=(${allTriggers.join('|')}))`, 'gi');
+  const splitPattern = new RegExp(`(?:\\n|\\s{3,})(?=(?:${allTriggers.join('|')}))`, 'gi');
   
   const blocks = text.split(splitPattern).filter(b => b && b.trim().length > 50);
   
@@ -349,18 +349,20 @@ Se o bloco parecer ser um sumário ou índice, retorne is_relevant = false.
 ════════════════════════════════════════
 CONTEXTO
 ════════════════════════════════════════
-Você receberá blocos de texto que JÁ PASSARAM por um pré-filtro de palavras-chave. Todos os blocos recebidos contêm termos técnicos relevantes. Sua tarefa é extrair e estruturar os dados de cada publicação.
+Você receberá um array JSON de blocos, cada um com um "id" numérico e um "text". Todos os blocos JÁ PASSARAM por um pré-filtro de palavras-chave.
 
-Para CADA bloco de texto recebido, extraia:
+Para CADA bloco, extraia:
+- block_id: o "id" numérico do bloco original (OBRIGATÓRIO)
 - publication_type: modalidade (Pregão Eletrônico, Concorrência, Dispensa, etc.)
 - organ: nome do órgão publicador
 - object_text: texto do campo "Objeto" da contratação
-- full_text: texto completo do bloco (SEM truncar, mantenha o texto integral)
 - city: cidade identificada
 - state: UF (SP, MG, DF, PE, etc.)
 - is_relevant: true se for uma publicação válida (ato administrativo), false se for sumário/lixo
 - competitor_match: nome do concorrente encontrado ou null
 - section: classificação ("SP", "MG", "DF", "CONCORRENTES", "AVISOS_DIVERSOS")
+
+NÃO retorne o campo full_text. Use o block_id para referenciar o bloco original.
 
 REGRAS DE CLASSIFICAÇÃO:
 1. Se menciona um concorrente → section = "CONCORRENTES"
@@ -372,7 +374,7 @@ REGRAS DE CLASSIFICAÇÃO:
 Concorrentes monitorados:
 ${COMPETITORS.map(c => `- ${c}`).join('\n')}
 
-IMPORTANTE: Retorne TODAS as publicações válidas. Não omita nenhuma. Descarte sumários e índices. Mantenha o texto completo de cada bloco.`;
+IMPORTANTE: Retorne TODAS as publicações válidas. Não omita nenhuma. Descarte sumários e índices.`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -395,36 +397,38 @@ serve(async (req) => {
     console.log(`Processing DOU text: ${text.length} chars for reading ${readingId}`);
 
     // ── STEP 1: Pre-filter with keyword-based NLP ──
-    // All relevant blocks (including competitor matches) go into relevantBlocks
     const { relevantBlocks, stats } = preFilterText(text);
     console.log(`Pre-filter: ${stats.total} blocks → ${stats.competitors} competitors, ${stats.technical} technical, ${stats.discarded} discarded`);
 
-    // ── STEP 2: Send ALL relevant blocks to AI for structured extraction ──
+    // ── STEP 2: Assign IDs, batch by char limit, process in parallel ──
     let aiPublications: any[] = [];
 
     if (relevantBlocks.length > 0) {
-      const relevantText = relevantBlocks.join('\n\n---BLOCO---\n\n');
-      const maxChars = 100000;
-      const chunks: string[] = [];
+      const blocksWithId = relevantBlocks.map((text, id) => ({ id, text }));
 
-      if (relevantText.length <= maxChars) {
-        chunks.push(relevantText);
-      } else {
-        let remaining = relevantText;
-        while (remaining.length > 0) {
-          if (remaining.length <= maxChars) { chunks.push(remaining); break; }
-          let splitAt = remaining.lastIndexOf('---BLOCO---', maxChars);
-          if (splitAt < maxChars * 0.3) splitAt = remaining.lastIndexOf('\n', maxChars);
-          if (splitAt < maxChars * 0.3) splitAt = maxChars;
-          chunks.push(remaining.substring(0, splitAt));
-          remaining = remaining.substring(splitAt);
+      // Group into batches of ~30000 chars
+      const BATCH_CHAR_LIMIT = 30000;
+      const batches: { id: number; text: string }[][] = [];
+      let currentBatch: { id: number; text: string }[] = [];
+      let currentSize = 0;
+
+      for (const block of blocksWithId) {
+        if (currentSize + block.text.length > BATCH_CHAR_LIMIT && currentBatch.length > 0) {
+          batches.push(currentBatch);
+          currentBatch = [];
+          currentSize = 0;
         }
+        currentBatch.push(block);
+        currentSize += block.text.length;
       }
+      if (currentBatch.length > 0) batches.push(currentBatch);
 
-      console.log(`Sending ${relevantBlocks.length} relevant blocks in ${chunks.length} chunk(s) to AI`);
+      console.log(`Sending ${blocksWithId.length} blocks in ${batches.length} parallel batch(es) to AI`);
 
-      for (let i = 0; i < chunks.length; i++) {
-        console.log(`AI chunk ${i + 1}/${chunks.length} (${chunks[i].length} chars)`);
+      // Process all batches in parallel
+      const batchResults = await Promise.all(batches.map(async (batch, i) => {
+        const batchJson = JSON.stringify(batch.map(b => ({ id: b.id, text: b.text })));
+        console.log(`AI batch ${i + 1}/${batches.length} (${batchJson.length} chars, ${batch.length} blocks)`);
 
         const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
@@ -438,7 +442,7 @@ serve(async (req) => {
               { role: "system", content: buildSystemPrompt() },
               {
                 role: "user",
-                content: `Extraia e estruture as publicações dos blocos abaixo (separados por ---BLOCO---). Cada bloco já foi pré-filtrado como relevante:\n\n${chunks[i]}`,
+                content: `Analise este array JSON de blocos e extraia as publicações válidas:\n\n${batchJson}`,
               },
             ],
             tools: [{
@@ -454,17 +458,17 @@ serve(async (req) => {
                       items: {
                         type: "object",
                         properties: {
+                          block_id: { type: "number", description: "ID numérico do bloco original" },
                           publication_type: { type: "string" },
                           organ: { type: "string" },
                           object_text: { type: "string" },
-                          full_text: { type: "string" },
                           city: { type: "string" },
                           state: { type: "string" },
                           is_relevant: { type: "boolean" },
                           competitor_match: { type: "string" },
                           section: { type: "string", enum: ["SP", "MG", "DF", "CONCORRENTES", "AVISOS_DIVERSOS"] },
                         },
-                        required: ["publication_type", "organ", "full_text", "section", "is_relevant"],
+                        required: ["block_id", "publication_type", "organ", "section", "is_relevant"],
                         additionalProperties: false,
                       },
                     },
@@ -479,18 +483,10 @@ serve(async (req) => {
         });
 
         if (!response.ok) {
-          if (response.status === 429) {
-            return new Response(JSON.stringify({ error: "Rate limit exceeded. Tente novamente em alguns minutos." }), {
-              status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-          }
-          if (response.status === 402) {
-            return new Response(JSON.stringify({ error: "Créditos insuficientes. Adicione créditos ao workspace." }), {
-              status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-          }
+          if (response.status === 429) throw new Error("RATE_LIMIT");
+          if (response.status === 402) throw new Error("PAYMENT_REQUIRED");
           const errorText = await response.text();
-          console.error(`AI gateway error (chunk ${i + 1}):`, response.status, errorText);
+          console.error(`AI gateway error (batch ${i + 1}):`, response.status, errorText);
           throw new Error(`AI gateway error: ${response.status}`);
         }
 
@@ -500,14 +496,29 @@ serve(async (req) => {
         if (toolCall?.function?.arguments) {
           try {
             const parsed = JSON.parse(toolCall.function.arguments);
-            const chunkPubs = parsed.publications || [];
-            console.log(`Chunk ${i + 1}: AI returned ${chunkPubs.length} publications`);
-            aiPublications.push(...chunkPubs);
+            const pubs = parsed.publications || [];
+            console.log(`Batch ${i + 1}: AI returned ${pubs.length} publications`);
+            return pubs;
           } catch (parseErr) {
-            console.error(`Failed to parse AI response for chunk ${i + 1}:`, parseErr);
+            console.error(`Failed to parse AI response for batch ${i + 1}:`, parseErr);
+            return [];
           }
         }
-      }
+        return [];
+      })).catch((err) => {
+        if (err.message === "RATE_LIMIT") throw err;
+        if (err.message === "PAYMENT_REQUIRED") throw err;
+        throw err;
+      });
+
+      // Flatten and reconstruct full_text from block_id
+      const rawAiPubs = batchResults.flat();
+      const blockMap = new Map(blocksWithId.map(b => [b.id, b.text]));
+      aiPublications = rawAiPubs.map((pub: any) => ({
+        ...pub,
+        full_text: blockMap.get(pub.block_id) || '',
+      }));
+      console.log(`Reconstructed full_text for ${aiPublications.length} publications from block IDs`);
     }
 
     // ── STEP 3: Post-process (competitor regex override + state classification) ──
@@ -577,9 +588,20 @@ serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
-    console.error("process-dou error:", e);
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    console.error("process-dou error:", msg);
+    if (msg === "RATE_LIMIT") {
+      return new Response(JSON.stringify({ error: "Rate limit exceeded. Tente novamente em alguns minutos." }), {
+        status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (msg === "PAYMENT_REQUIRED") {
+      return new Response(JSON.stringify({ error: "Créditos insuficientes. Adicione créditos ao workspace." }), {
+        status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
+      JSON.stringify({ error: msg }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
