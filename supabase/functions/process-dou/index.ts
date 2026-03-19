@@ -449,10 +449,9 @@ Para CADA bloco, extraia:
 - organ: nome do órgão publicador
 - object_text: texto do campo "Objeto" da contratação
 - city: cidade identificada
-- state: UF (SP, MG, DF, PE, etc.)
+- estado_execucao: UF de 2 letras onde o serviço/obra será EXECUTADO (ex: SP, BA, PR, MG, DF). Baseie-se UNICAMENTE no local de execução do serviço ou sede da prefeitura demandante. IGNORE siglas no nome do órgão (ex: "CESUP - SP" não significa que é SP).
 - is_relevant: true SOMENTE se for uma publicação válida com escopo técnico compatível
 - competitor_match: nome do concorrente encontrado ou null
-- section: classificação ("SP", "MG", "DF", "CONCORRENTES", "AVISOS_DIVERSOS")
 
 NÃO retorne o campo full_text. Use o block_id para referenciar o bloco original.
 
