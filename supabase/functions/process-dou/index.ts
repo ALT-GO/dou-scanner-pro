@@ -251,9 +251,9 @@ const MG_CITIES = [
 const DF_CITIES = [
   'Brasília', 'Brasilia', 'Taguatinga', 'Ceilândia', 'Ceilandia',
   'Gama', 'Samambaia', 'Planaltina', 'Sobradinho', 'Recanto das Emas',
-  'Águas Claras', 'Aguas Claras', 'Guará', 'Guara', 'Cruzeiro',
+  'Águas Claras', 'Aguas Claras', 'Guará', 'Guara',
   'Lago Sul', 'Lago Norte', 'Asa Sul', 'Asa Norte',
-  'São Sebastião', 'Santa Maria', 'Riacho Fundo', 'Itapoã',
+  'Riacho Fundo', 'Itapoã',
   'Paranoá', 'Núcleo Bandeirante', 'Candangolândia', 'Park Way',
   'Jardim Botânico', 'Vicente Pires', 'SIA', 'SAAN', 'Sudoeste', 'Noroeste',
 ];
