@@ -5,193 +5,247 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Competitor names — short forms for broader matching
+// ═══════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════
+
 const COMPETITORS = [
-  "ORION ENGENHARIA",
-  "EQS",
-  "GREEN4T",
-  "GLS",
-  "GEMELO",
-  "CETEST",
-  "ACECO",
-  "KOERICH",
-  "MPE",
-  "ATLÂNTICO ENGENHARIA",
-  "VIRTUAL",
-  "VIA ENGENHARIA",
+  "ORION ENGENHARIA", "EQS", "GREEN4T", "GLS", "GEMELO",
+  "CETEST", "ACECO", "KOERICH", "MPE",
+  "ATLÂNTICO ENGENHARIA", "VIRTUAL", "VIA ENGENHARIA",
 ];
 
 const BLACKLIST_TERMS = [
-  "EXTRATO DE CONTRATO",
-  "RESULTADO DE JULGAMENTO",
-  "HOMOLOGAÇÃO",
-  "ADJUDICAÇÃO",
-  "TERMO ADITIVO",
-  "EXTRATO DE ATA",
-  "RATIFICAÇÃO",
+  "EXTRATO DE CONTRATO", "RESULTADO DE JULGAMENTO",
+  "HOMOLOGAÇÃO", "ADJUDICAÇÃO", "TERMO ADITIVO",
+  "EXTRATO DE ATA", "RATIFICAÇÃO",
 ];
 
 const NOTICE_TYPES = [
-  "AVISO DE LICITAÇÃO",
-  "AVISO DE PREGÃO",
-  "AVISO DE CONCORRÊNCIA",
-  "AVISO DE DISPENSA",
-  "AVISO DE INEXIGIBILIDADE",
-  "AVISO DE CHAMAMENTO PÚBLICO",
-  "AVISO DE CHAMAMENTO",
-  "AVISO DE CREDENCIAMENTO",
-  "AVISO DE ATA DE REGISTRO DE PREÇOS",
-  "AVISO DE REGISTRO DE PREÇOS",
-  "INTENÇÃO DE REGISTRO DE PREÇOS",
-  "AVISO DE ALTERAÇÃO",
-  "AVISO DE RETIFICAÇÃO",
-  "AVISO DE REPUBLICAÇÃO",
-  "AVISO DE SUSPENSÃO",
-  "AVISO DE REABERTURA DE PRAZO",
-  "AVISO DE REABERTURA",
-  "AVISO DE REVOGAÇÃO",
-  "PREGÃO ELETRÔNICO",
-  "CONCORRÊNCIA ELETRÔNICA",
-  "CONCORRÊNCIA PÚBLICA",
+  "AVISO DE LICITAÇÃO", "AVISO DE PREGÃO", "AVISO DE CONCORRÊNCIA",
+  "AVISO DE DISPENSA", "AVISO DE INEXIGIBILIDADE",
+  "AVISO DE CHAMAMENTO PÚBLICO", "AVISO DE CHAMAMENTO",
+  "AVISO DE CREDENCIAMENTO", "AVISO DE ATA DE REGISTRO DE PREÇOS",
+  "AVISO DE REGISTRO DE PREÇOS", "INTENÇÃO DE REGISTRO DE PREÇOS",
+  "AVISO DE ALTERAÇÃO", "AVISO DE RETIFICAÇÃO", "AVISO DE REPUBLICAÇÃO",
+  "AVISO DE SUSPENSÃO", "AVISO DE REABERTURA DE PRAZO",
+  "AVISO DE REABERTURA", "AVISO DE REVOGAÇÃO",
+  "PREGÃO ELETRÔNICO", "CONCORRÊNCIA ELETRÔNICA", "CONCORRÊNCIA PÚBLICA",
 ];
 
-function buildSystemPrompt(): string {
-  return `Você é um especialista em análise de publicações do Diário Oficial da União (DOU) - Seção 3.
+const TECHNICAL_KEYWORDS = [
+  "engenharia", "obra", "obras", "construção", "reforma", "reformas",
+  "ampliação", "adequação predial", "retrofit", "infraestrutura",
+  "edificação", "pavimentação", "fundação", "estrutura metálica",
+  "alvenaria", "concreto", "projeto executivo", "projeto básico",
+  "engenharia civil", "serviços de engenharia",
+  "manutenção predial", "manutenção preventiva", "manutenção corretiva",
+  "manutenção preditiva", "facilities", "gestão predial",
+  "serviços de manutenção", "conservação predial",
+  "instalações elétricas", "instalação elétrica", "rede elétrica",
+  "subestação", "quadro elétrico", "grupo gerador", "gerador",
+  "nobreak", "no-break", "ups", "transformador", "spda",
+  "aterramento", "iluminação", "cabeamento estruturado", "cabeamento",
+  "fibra óptica", "infraestrutura elétrica", "baixa tensão", "média tensão",
+  "climatização", "ar condicionado", "ar-condicionado",
+  "hvac", "chiller", "fancoil", "fan coil", "split", "vrf", "vrv",
+  "ventilação", "exaustão", "refrigeração", "central de água gelada",
+  "torre de resfriamento",
+  "automação predial", "automação", "bms", "cftv",
+  "controle de acesso", "catracas", "biometria",
+  "detecção de incêndio", "combate a incêndio", "alarme de incêndio",
+  "sprinkler", "hidrante", "sistema de incêndio",
+  "sonorização", "segurança eletrônica",
+  "data center", "datacenter", "data-center",
+  "sala cofre", "sala-cofre", "missão crítica",
+  "cpd", "centro de dados", "centro de processamento de dados",
+  "infraestrutura de ti", "rack", "piso elevado",
+  "containment", "tier iii", "tier iv", "tier 3", "tier 4",
+  "energia solar", "fotovoltaico", "fotovoltaica",
+  "painel solar", "módulo fotovoltaico", "usina solar",
+  "geração solar", "geração distribuída", "sistema fotovoltaico",
+  "elevador", "elevadores", "escada rolante",
+  "impermeabilização", "cobertura metálica", "fachada",
+  "drywall", "forro", "piso", "revestimento",
+  "sistema predial", "sistemas prediais",
+];
 
-TAREFA: Analise o texto do DOU Seção 3. Primeiro, divida o texto em blocos individuais de publicação (cada publicação no DOU é separada por mudança de órgão ou título). Depois, para CADA bloco, aplique as regras abaixo NA ORDEM EXATA.
-
-════════════════════════════════════════
-REGRA 1 — MONITORAMENTO DE CONCORRENTES (PRIORIDADE MÁXIMA)
-════════════════════════════════════════
-Se o bloco mencionar QUALQUER uma das empresas abaixo, CAPTURE IMEDIATAMENTE com section = "CONCORRENTES".
-NÃO aplique nenhum outro filtro. Capture independentemente do tipo de publicação, estado ou escopo técnico.
-
-Empresas monitoradas:
-${COMPETITORS.map(c => `- ${c}`).join('\n')}
-
-IMPORTANTE: Busque variações como "ORION ENGENHARIA E TECNOLOGIA", "CETEST MINAS ENGENHARIA", "EQS ENGENHARIA", "MPE ENGENHARIA", "KOERICH ENGENHARIA", "VIRTUAL ENGENHARIA" etc. Se o nome da empresa aparecer mesmo parcialmente (ex: apenas "CETEST" ou "GREEN4T"), capture.
-
-════════════════════════════════════════
-REGRA 2 — IDENTIFICAR AVISOS DE LICITAÇÃO
-════════════════════════════════════════
-Se nenhum concorrente foi detectado na Regra 1, verifique se o bloco contém um aviso de contratação pública.
-
-Se o bloco contiver QUALQUER um destes termos no início ou título, é um aviso válido:
-${NOTICE_TYPES.map(t => `- ${t}`).join('\n')}
-
-Se o bloco contiver termos como EXTRATO DE CONTRATO, RESULTADO DE JULGAMENTO, HOMOLOGAÇÃO, ADJUDICAÇÃO, TERMO ADITIVO, EXTRATO DE ATA ou RATIFICAÇÃO — IGNORE o bloco (processo já finalizado).
-
-Se o bloco NÃO contém nenhum tipo de aviso válido, IGNORE.
-
-════════════════════════════════════════
-REGRA 3 — FILTRO DE ESCOPO TÉCNICO
-════════════════════════════════════════
-Para blocos que passaram pela Regra 2, analise o OBJETO da contratação semanticamente. Capture APENAS se relacionado a:
-
-ENGENHARIA E OBRAS: engenharia, obras, construção, reforma, ampliação, adequação predial, retrofit, infraestrutura
-
-MANUTENÇÃO PREDIAL: manutenção predial, manutenção preventiva, manutenção corretiva, facilities técnico, serviços de manutenção
-
-SISTEMAS PREDIAIS: instalações elétricas, climatização, ar condicionado, HVAC, automação predial, CFTV, controle de acesso, detecção de incêndio, combate a incêndio, sistema de alarme
-
-AMBIENTES DE MISSÃO CRÍTICA: data center, datacenter, sala cofre, ambientes de missão crítica, CPD, centro de dados, infraestrutura de TI crítica
-
-ENERGIA: energia solar, sistema fotovoltaico, geração solar, usina solar
-
-Se o objeto trata de: segurança patrimonial, vigilância armada/desarmada, limpeza, alimentação, mobiliário, material de escritório, medicamentos, uniformes, transporte, combustível, software/TI genérico — IGNORE.
-
-A análise deve ser SEMÂNTICA — considere sinônimos, siglas e variações.
-
-════════════════════════════════════════
-REGRA 4 — CLASSIFICAÇÃO POR ESTADO
-════════════════════════════════════════
-Identifique o estado analisando: padrões "Cidade/UF", "Cidade-UF", nome do estado por extenso, cidades conhecidas.
-
-Estados prioritários:
-- SP → section = "SP"
-- MG → section = "MG"  
-- DF → section = "DF"
-- Qualquer outro estado → section = "AVISOS_DIVERSOS"
-
-Para cada publicação capturada, extraia:
-- publication_type: modalidade da licitação (ex: "Pregão Eletrônico", "Concorrência Eletrônica", "Dispensa de Licitação")
-- organ: nome do órgão publicador
-- object_text: texto do campo "Objeto" da contratação
-- full_text: texto completo do bloco de publicação
-- city: cidade identificada
-- state: UF identificada (ex: "SP", "MG", "DF", "PE")
-- is_relevant: true
-- competitor_match: nome do concorrente encontrado (ou null)
-- section: classificação final ("SP", "MG", "DF", "CONCORRENTES", "AVISOS_DIVERSOS")
-
-IMPORTANTE: Retorne TODAS as publicações relevantes. Não omita nenhuma. Se houver 10 publicações relevantes, retorne 10.`;
-}
+// ═══════════════════════════════════════════════════
+// PRE-FILTER FUNCTIONS (Rule-based NLP)
+// ═══════════════════════════════════════════════════
 
 function buildCompetitorRegex(): RegExp {
   const patterns = COMPETITORS.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   return new RegExp(`(${patterns.join('|')})`, 'gi');
 }
 
+function buildTechnicalRegex(): RegExp {
+  const sorted = [...TECHNICAL_KEYWORDS].sort((a, b) => b.length - a.length);
+  const patterns = sorted.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(`(${patterns.join('|')})`, 'gi');
+}
+
+function matchesCompetitor(text: string): string | null {
+  const regex = buildCompetitorRegex();
+  const match = text.match(regex);
+  return match ? match[0].toUpperCase() : null;
+}
+
+function containsBlacklist(text: string): boolean {
+  const upper = text.toUpperCase();
+  return BLACKLIST_TERMS.some(term => upper.includes(term));
+}
+
+function containsNoticeType(text: string): boolean {
+  const upper = text.toUpperCase();
+  return NOTICE_TYPES.some(term => upper.includes(term));
+}
+
+function matchesTechnicalScope(text: string): boolean {
+  const regex = buildTechnicalRegex();
+  return regex.test(text);
+}
+
+/**
+ * Split raw DOU text into individual publication blocks.
+ */
+function splitIntoBlocks(text: string): string[] {
+  const headerPattern = /\n(?=(?:MINISTÉRIO|SECRETARIA|UNIVERSIDADE|INSTITUTO|AGÊNCIA|EMPRESA|FUNDAÇÃO|SUPERINTENDÊNCIA|DEPARTAMENTO|DIRETORIA|COMANDO|TRIBUNAL|CONSELHO|PRESIDÊNCIA|GABINETE|PROCURADORIA|DEFENSORIA|COMPANHIA|BANCO|CAIXA)\s)/gi;
+  const blocks = text.split(headerPattern).filter(b => b.trim().length > 50);
+  if (blocks.length <= 1) {
+    return text.split(/\n{2,}/).filter(b => b.trim().length > 50);
+  }
+  return blocks;
+}
+
+interface PreFilterResult {
+  relevantBlocks: string[];
+  competitorBlocks: string[];
+  stats: { total: number; competitors: number; technical: number; discarded: number };
+}
+
+/**
+ * Apply the 4-rule pre-filter BEFORE sending to AI.
+ * This reduces token usage dramatically by discarding irrelevant blocks.
+ */
+function preFilterText(text: string): PreFilterResult {
+  const blocks = splitIntoBlocks(text);
+  const relevantBlocks: string[] = [];
+  const competitorBlocks: string[] = [];
+  let competitors = 0, technical = 0, discarded = 0;
+
+  for (const block of blocks) {
+    // RULE 1: Competitor match — capture immediately, bypass all other filters
+    if (matchesCompetitor(block)) {
+      competitorBlocks.push(block);
+      competitors++;
+      continue;
+    }
+
+    // RULE 2: Must not be blacklisted AND must contain a valid notice type
+    if (containsBlacklist(block)) { discarded++; continue; }
+    if (!containsNoticeType(block)) { discarded++; continue; }
+
+    // RULE 3: Must match technical scope keywords
+    if (!matchesTechnicalScope(block)) { discarded++; continue; }
+
+    // Passed all pre-filters
+    relevantBlocks.push(block);
+    technical++;
+  }
+
+  return { relevantBlocks, competitorBlocks, stats: { total: blocks.length, competitors, technical, discarded } };
+}
+
+// ═══════════════════════════════════════════════════
+// STATE DETECTION (Post-processing)
+// ═══════════════════════════════════════════════════
+
 function detectState(text: string): string | null {
-  // Pattern: Cidade/UF or Cidade-UF
   const ufPattern = /(?:[A-Za-zÀ-ÿ\s]+)[\/\-–—]\s*(SP|MG|DF|RJ|BA|PR|RS|SC|GO|PE|CE|PA|MA|MT|MS|ES|PB|RN|AL|PI|SE|TO|RO|AC|AP|AM|RR)\b/gi;
   const matches = [...text.matchAll(ufPattern)];
-  
-  // Prioritize SP/MG/DF
+
   for (const m of matches) {
     const uf = m[1].toUpperCase();
     if (['SP', 'MG', 'DF'].includes(uf)) return uf;
   }
-  
-  // City-based detection
+
   const cityMap: [RegExp, string][] = [
     [/\b(Bras[íi]lia|Taguatinga|Ceil[âa]ndia|Gama|Samambaia|Planaltina|Governo do Distrito Federal|GDF)\b/gi, 'DF'],
     [/\b(Campinas|Santos|São José dos Campos|Ribeirão Preto|Guarulhos|Sorocaba|São Bernardo|Osasco|Bauru|Piracicaba|São Carlos|Jundiaí|Mogi das Cruzes|São Paulo)\b/gi, 'SP'],
     [/\b(Belo Horizonte|Uberlândia|Juiz de Fora|Montes Claros|Contagem|Betim|Uberaba|Governador Valadares|Ipatinga|Poços de Caldas|Campo Belo|São José da Lapa)\b/gi, 'MG'],
   ];
-  
+
   for (const [regex, state] of cityMap) {
-    if (regex.test(text)) {
-      regex.lastIndex = 0;
-      return state;
-    }
+    if (regex.test(text)) { regex.lastIndex = 0; return state; }
     regex.lastIndex = 0;
   }
-  
-  // Return any other UF found
+
   if (matches.length > 0) return matches[0][1].toUpperCase();
-  
   return null;
 }
 
+// ═══════════════════════════════════════════════════
+// POST-PROCESSING
+// ═══════════════════════════════════════════════════
+
 function postProcessPublications(publications: any[]): any[] {
   const competitorRegex = buildCompetitorRegex();
-  
+
   return publications.map((pub: any) => {
     const fullText = [pub.full_text, pub.object_text, pub.organ].filter(Boolean).join(' ');
-    
-    // RULE 1: Competitor override
+
+    // Double-check competitor override
     const compMatch = fullText.match(competitorRegex);
     competitorRegex.lastIndex = 0;
     if (compMatch) {
-      return {
-        ...pub,
-        section: 'CONCORRENTES',
-        competitor_match: compMatch[0].toUpperCase(),
-        is_relevant: true,
-      };
+      return { ...pub, section: 'CONCORRENTES', competitor_match: compMatch[0].toUpperCase(), is_relevant: true };
     }
-    
-    // RULE 4: State classification refinement
+
+    // State classification
     const detectedState = detectState(fullText);
     const finalState = detectedState || pub.state || null;
-    const finalSection = finalState && ['SP', 'MG', 'DF'].includes(finalState) 
-      ? finalState 
-      : 'AVISOS_DIVERSOS';
-    
+    const finalSection = finalState && ['SP', 'MG', 'DF'].includes(finalState) ? finalState : 'AVISOS_DIVERSOS';
     return { ...pub, state: finalState, section: finalSection };
   }).filter((p: any) => p.is_relevant);
 }
+
+// ═══════════════════════════════════════════════════
+// AI PROMPT (only for pre-filtered relevant blocks)
+// ═══════════════════════════════════════════════════
+
+function buildSystemPrompt(): string {
+  return `Você é um especialista em análise de publicações do Diário Oficial da União (DOU) - Seção 3.
+
+CONTEXTO: Você receberá blocos de texto que JÁ PASSARAM por um pré-filtro de palavras-chave. Todos os blocos recebidos contêm termos técnicos relevantes. Sua tarefa é extrair e estruturar os dados de cada publicação.
+
+Para CADA bloco de texto recebido, extraia:
+- publication_type: modalidade (Pregão Eletrônico, Concorrência, Dispensa, etc.)
+- organ: nome do órgão publicador
+- object_text: texto do campo "Objeto" da contratação
+- full_text: texto completo do bloco
+- city: cidade identificada
+- state: UF (SP, MG, DF, PE, etc.)
+- is_relevant: true (os blocos já foram pré-filtrados)
+- competitor_match: nome do concorrente encontrado ou null
+- section: classificação ("SP", "MG", "DF", "CONCORRENTES", "AVISOS_DIVERSOS")
+
+REGRAS DE CLASSIFICAÇÃO:
+1. Se menciona um concorrente → section = "CONCORRENTES"
+2. Se estado = SP → section = "SP"
+3. Se estado = MG → section = "MG"
+4. Se estado = DF → section = "DF"
+5. Caso contrário → section = "AVISOS_DIVERSOS"
+
+Concorrentes monitorados:
+${COMPETITORS.map(c => `- ${c}`).join('\n')}
+
+IMPORTANTE: Retorne TODAS as publicações. Não omita nenhuma.`;
+}
+
+// ═══════════════════════════════════════════════════
+// EDGE FUNCTION HANDLER
+// ═══════════════════════════════════════════════════
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -208,56 +262,75 @@ serve(async (req) => {
 
     console.log(`Processing DOU text: ${text.length} chars for reading ${readingId}`);
 
-    // Split into chunks if text is very large
-    const maxChars = 100000;
-    const chunks: string[] = [];
-    if (text.length <= maxChars) {
-      chunks.push(text);
-    } else {
-      // Split at paragraph boundaries
-      let remaining = text;
-      while (remaining.length > 0) {
-        if (remaining.length <= maxChars) {
-          chunks.push(remaining);
-          break;
+    // ── STEP 1: Pre-filter with keyword-based NLP ──
+    const { relevantBlocks, competitorBlocks, stats } = preFilterText(text);
+    console.log(`Pre-filter: ${stats.total} blocks → ${stats.competitors} competitors, ${stats.technical} technical, ${stats.discarded} discarded`);
+
+    // ── STEP 2: Build competitor publications directly (no AI needed) ──
+    const competitorPublications = competitorBlocks.map(block => {
+      const competitor = matchesCompetitor(block)!;
+      const state = detectState(block);
+      return {
+        publication_type: "Monitoramento de Concorrente",
+        organ: null,
+        object_text: null,
+        full_text: block.substring(0, 2000),
+        city: null,
+        state,
+        is_relevant: true,
+        competitor_match: competitor,
+        section: "CONCORRENTES" as const,
+      };
+    });
+
+    // ── STEP 3: Send only relevant blocks to AI for structured extraction ──
+    let aiPublications: any[] = [];
+
+    if (relevantBlocks.length > 0) {
+      // Join relevant blocks and chunk if needed
+      const relevantText = relevantBlocks.join('\n\n---BLOCO---\n\n');
+      const maxChars = 100000;
+      const chunks: string[] = [];
+
+      if (relevantText.length <= maxChars) {
+        chunks.push(relevantText);
+      } else {
+        let remaining = relevantText;
+        while (remaining.length > 0) {
+          if (remaining.length <= maxChars) { chunks.push(remaining); break; }
+          let splitAt = remaining.lastIndexOf('---BLOCO---', maxChars);
+          if (splitAt < maxChars * 0.3) splitAt = remaining.lastIndexOf('\n', maxChars);
+          if (splitAt < maxChars * 0.3) splitAt = maxChars;
+          chunks.push(remaining.substring(0, splitAt));
+          remaining = remaining.substring(splitAt);
         }
-        // Find a good split point (double newline near the limit)
-        let splitAt = remaining.lastIndexOf('\n\n', maxChars);
-        if (splitAt < maxChars * 0.5) splitAt = remaining.lastIndexOf('\n', maxChars);
-        if (splitAt < maxChars * 0.5) splitAt = maxChars;
-        chunks.push(remaining.substring(0, splitAt));
-        remaining = remaining.substring(splitAt);
       }
-    }
 
-    console.log(`Split into ${chunks.length} chunk(s)`);
+      console.log(`Sending ${relevantBlocks.length} relevant blocks in ${chunks.length} chunk(s) to AI`);
 
-    let allPublications: any[] = [];
+      for (let i = 0; i < chunks.length; i++) {
+        console.log(`AI chunk ${i + 1}/${chunks.length} (${chunks[i].length} chars)`);
 
-    for (let i = 0; i < chunks.length; i++) {
-      console.log(`Processing chunk ${i + 1}/${chunks.length} (${chunks[i].length} chars)`);
-
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: buildSystemPrompt() },
-            {
-              role: "user",
-              content: `Analise o seguinte texto extraído do DOU Seção 3. Divida em blocos de publicação individuais e aplique as 4 regras para cada bloco. Retorne TODAS as publicações relevantes:\n\n${chunks[i]}`,
-            },
-          ],
-          tools: [
-            {
+        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              { role: "system", content: buildSystemPrompt() },
+              {
+                role: "user",
+                content: `Extraia e estruture as publicações dos blocos abaixo (separados por ---BLOCO---). Cada bloco já foi pré-filtrado como relevante:\n\n${chunks[i]}`,
+              },
+            ],
+            tools: [{
               type: "function",
               function: {
                 name: "classify_publications",
-                description: "Retorna as publicações relevantes identificadas no DOU Seção 3",
+                description: "Retorna as publicações estruturadas do DOU Seção 3",
                 parameters: {
                   type: "object",
                   properties: {
@@ -266,18 +339,15 @@ serve(async (req) => {
                       items: {
                         type: "object",
                         properties: {
-                          publication_type: { type: "string", description: "Modalidade: Pregão Eletrônico, Concorrência, Dispensa, etc." },
-                          organ: { type: "string", description: "Órgão publicador" },
-                          object_text: { type: "string", description: "Texto do campo Objeto" },
-                          full_text: { type: "string", description: "Texto completo do bloco de publicação" },
-                          city: { type: "string", description: "Cidade identificada" },
-                          state: { type: "string", description: "UF identificada (SP, MG, DF, PE, etc.)" },
+                          publication_type: { type: "string" },
+                          organ: { type: "string" },
+                          object_text: { type: "string" },
+                          full_text: { type: "string" },
+                          city: { type: "string" },
+                          state: { type: "string" },
                           is_relevant: { type: "boolean" },
-                          competitor_match: { type: "string", description: "Nome do concorrente encontrado ou null" },
-                          section: {
-                            type: "string",
-                            enum: ["SP", "MG", "DF", "CONCORRENTES", "AVISOS_DIVERSOS"],
-                          },
+                          competitor_match: { type: "string" },
+                          section: { type: "string", enum: ["SP", "MG", "DF", "CONCORRENTES", "AVISOS_DIVERSOS"] },
                         },
                         required: ["publication_type", "organ", "full_text", "section", "is_relevant"],
                         additionalProperties: false,
@@ -288,50 +358,49 @@ serve(async (req) => {
                   additionalProperties: false,
                 },
               },
-            },
-          ],
-          tool_choice: { type: "function", function: { name: "classify_publications" } },
-        }),
-      });
+            }],
+            tool_choice: { type: "function", function: { name: "classify_publications" } },
+          }),
+        });
 
-      if (!response.ok) {
-        if (response.status === 429) {
-          return new Response(JSON.stringify({ error: "Rate limit exceeded. Tente novamente em alguns minutos." }), {
-            status: 429,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
+        if (!response.ok) {
+          if (response.status === 429) {
+            return new Response(JSON.stringify({ error: "Rate limit exceeded. Tente novamente em alguns minutos." }), {
+              status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          if (response.status === 402) {
+            return new Response(JSON.stringify({ error: "Créditos insuficientes. Adicione créditos ao workspace." }), {
+              status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          const errorText = await response.text();
+          console.error(`AI gateway error (chunk ${i + 1}):`, response.status, errorText);
+          throw new Error(`AI gateway error: ${response.status}`);
         }
-        if (response.status === 402) {
-          return new Response(JSON.stringify({ error: "Créditos insuficientes. Adicione créditos ao workspace." }), {
-            status: 402,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        const errorText = await response.text();
-        console.error(`AI gateway error (chunk ${i + 1}):`, response.status, errorText);
-        throw new Error(`AI gateway error: ${response.status}`);
-      }
 
-      const aiResult = await response.json();
-      const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
+        const aiResult = await response.json();
+        const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
 
-      if (toolCall?.function?.arguments) {
-        try {
-          const parsed = JSON.parse(toolCall.function.arguments);
-          const chunkPubs = parsed.publications || [];
-          console.log(`Chunk ${i + 1}: AI returned ${chunkPubs.length} publications`);
-          allPublications.push(...chunkPubs);
-        } catch (parseErr) {
-          console.error(`Failed to parse AI response for chunk ${i + 1}:`, parseErr);
+        if (toolCall?.function?.arguments) {
+          try {
+            const parsed = JSON.parse(toolCall.function.arguments);
+            const chunkPubs = parsed.publications || [];
+            console.log(`Chunk ${i + 1}: AI returned ${chunkPubs.length} publications`);
+            aiPublications.push(...chunkPubs);
+          } catch (parseErr) {
+            console.error(`Failed to parse AI response for chunk ${i + 1}:`, parseErr);
+          }
         }
       }
     }
 
-    // Post-process with regex enforcement
-    const publications = postProcessPublications(allPublications);
-    console.log(`Post-processing: ${allPublications.length} raw → ${publications.length} final`);
+    // ── STEP 4: Merge and post-process ──
+    const allRaw = [...competitorPublications, ...aiPublications];
+    const publications = postProcessPublications(allRaw);
+    console.log(`Final: ${competitorPublications.length} competitor + ${aiPublications.length} AI → ${publications.length} total`);
 
-    // Insert publications into database
+    // ── STEP 5: Insert into database ──
     if (publications.length > 0) {
       const pubRecords = publications.map((pub: any) => ({
         reading_id: readingId,
@@ -361,13 +430,10 @@ serve(async (req) => {
       }
     }
 
-    const opportunities = publications.filter(
-      (p: any) => ["SP", "MG", "DF", "AVISOS_DIVERSOS"].includes(p.section)
-    ).length;
-    const competitorMentions = publications.filter(
-      (p: any) => p.section === "CONCORRENTES"
-    ).length;
+    const opportunities = publications.filter((p: any) => ["SP", "MG", "DF", "AVISOS_DIVERSOS"].includes(p.section)).length;
+    const competitorMentions = publications.filter((p: any) => p.section === "CONCORRENTES").length;
 
+    // Update reading status
     const updateRes = await fetch(`${SUPABASE_URL}/rest/v1/dou_readings?id=eq.${readingId}`, {
       method: "PATCH",
       headers: {
@@ -393,6 +459,7 @@ serve(async (req) => {
         totalPublications: publications.length,
         opportunities,
         competitorMentions,
+        preFilterStats: stats,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
