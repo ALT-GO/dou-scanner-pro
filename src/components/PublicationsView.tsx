@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ArrowLeft, Download, Loader2, MapPin, Eye, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { motion } from 'framer-motion';
+import { buildHighlightRegex, COMPETITORS } from '@/lib/keywords';
 
 interface Publication {
   id: string;
@@ -37,6 +38,45 @@ const stateBadgeColors: Record<string, string> = {
   DF: 'bg-accent/10 text-accent',
 };
 
+function HighlightedText({ text }: { text: string }) {
+  const parts = useMemo(() => {
+    const regex = buildHighlightRegex();
+    const result: { text: string; bold: boolean; isCompetitor: boolean }[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        result.push({ text: text.slice(lastIndex, match.index), bold: false, isCompetitor: false });
+      }
+      const isComp = COMPETITORS.some(c => c.toLowerCase() === match![0].toLowerCase());
+      result.push({ text: match[0], bold: true, isCompetitor: isComp });
+      lastIndex = regex.lastIndex;
+    }
+    if (lastIndex < text.length) {
+      result.push({ text: text.slice(lastIndex), bold: false, isCompetitor: false });
+    }
+    return result;
+  }, [text]);
+
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.bold ? (
+          <span
+            key={i}
+            className={`font-bold ${p.isCompetitor ? 'text-destructive' : 'text-primary'}`}
+          >
+            {p.text}
+          </span>
+        ) : (
+          <span key={i}>{p.text}</span>
+        )
+      )}
+    </>
+  );
+}
+
 function PublicationCard({ pub, index }: { pub: Publication; index: number }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -45,9 +85,9 @@ function PublicationCard({ pub, index }: { pub: Publication; index: number }) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.03 }}
-      className="bg-card border border-border/60 rounded-xl p-4 hover:border-border transition-colors"
+      className="bg-card border border-border/60 rounded-xl p-5 hover:border-border transition-colors space-y-2"
     >
-      <div className="flex items-start justify-between mb-2">
+      <div className="flex items-start justify-between">
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className="text-xs">
             {pub.publication_type}
@@ -68,25 +108,26 @@ function PublicationCard({ pub, index }: { pub: Publication; index: number }) {
       </div>
 
       {pub.organ && (
-        <p className="text-xs text-muted-foreground mb-1 font-medium uppercase tracking-wide">
+        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
           {pub.organ}
         </p>
       )}
 
       {pub.object_text && (
-        <p className="text-sm font-medium text-foreground mb-2">
-          <span className="text-muted-foreground">Objeto:</span> {pub.object_text}
+        <p className="text-sm text-foreground">
+          <span className="text-muted-foreground font-medium">Objeto: </span>
+          <HighlightedText text={pub.object_text} />
         </p>
       )}
 
       <p className={`text-sm text-muted-foreground leading-relaxed ${expanded ? '' : 'line-clamp-3'}`}>
-        {pub.full_text}
+        <HighlightedText text={pub.full_text} />
       </p>
 
       {pub.full_text.length > 200 && (
         <button
           onClick={() => setExpanded(!expanded)}
-          className="text-xs text-primary hover:underline mt-1"
+          className="text-xs text-primary hover:underline"
         >
           {expanded ? 'Ver menos' : 'Ver texto completo'}
         </button>
@@ -110,14 +151,12 @@ export function PublicationsView({
   onDownload,
   isDownloading,
 }: PublicationsViewProps) {
-  // Group publications into 3 tabs
   const priorityPubs = publications.filter(p => ['SP', 'MG', 'DF'].includes(p.section));
   const competitorPubs = publications.filter(p => p.section === 'CONCORRENTES');
   const diversePubs = publications.filter(p => p.section === 'AVISOS_DIVERSOS');
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={onBack}>
@@ -144,12 +183,11 @@ export function PublicationsView({
         </Button>
       </div>
 
-      {/* 3-Tab Layout */}
       <Tabs defaultValue="priority" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="priority" className="gap-2">
             <MapPin className="h-4 w-4" />
-            Prioridade
+            Licitações
             <Badge className="bg-primary/10 text-primary border-0 text-xs ml-1">
               {priorityPubs.length}
             </Badge>
@@ -170,13 +208,12 @@ export function PublicationsView({
           </TabsTrigger>
         </TabsList>
 
-        {/* Tab: Prioridade (SP/MG/DF) */}
-        <TabsContent value="priority" className="mt-4 space-y-6">
+        <TabsContent value="priority" className="mt-4 space-y-8">
           {['SP', 'MG', 'DF'].map(state => {
             const statePubs = priorityPubs.filter(p => p.section === state);
             return (
-              <div key={state}>
-                <div className="flex items-center gap-2 mb-3">
+              <div key={state} className="space-y-3">
+                <div className="flex items-center gap-2 border-b border-border pb-2">
                   <h3 className="text-base font-semibold text-foreground">
                     {stateLabels[state]}
                   </h3>
@@ -187,7 +224,7 @@ export function PublicationsView({
                 {statePubs.length === 0 ? (
                   <EmptyState message={`Nenhuma publicação em ${stateLabels[state]}.`} />
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {statePubs.map((pub, i) => (
                       <PublicationCard key={pub.id} pub={pub} index={i} />
                     ))}
@@ -198,12 +235,11 @@ export function PublicationsView({
           })}
         </TabsContent>
 
-        {/* Tab: Concorrência / Orion */}
         <TabsContent value="competitors" className="mt-4">
           {competitorPubs.length === 0 ? (
             <EmptyState message="Nenhuma menção a concorrentes ou à Orion identificada." />
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {competitorPubs.map((pub, i) => (
                 <PublicationCard key={pub.id} pub={pub} index={i} />
               ))}
@@ -211,12 +247,11 @@ export function PublicationsView({
           )}
         </TabsContent>
 
-        {/* Tab: Avisos Diversos */}
         <TabsContent value="diverse" className="mt-4">
           {diversePubs.length === 0 ? (
             <EmptyState message="Nenhum aviso de outros estados identificado." />
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {diversePubs.map((pub, i) => (
                 <PublicationCard key={pub.id} pub={pub} index={i} />
               ))}
