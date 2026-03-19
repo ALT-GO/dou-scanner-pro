@@ -191,6 +191,9 @@ function preFilterText(text: string): PreFilterResult {
     // REGRA 0: Discard summary, index and header blocks immediately
     if (isSummaryOrHeader(block)) { discarded++; continue; }
 
+    // REGRA 0.5 (SOBERANA): Blacklist tem prioridade ABSOLUTA — antes de tudo
+    if (containsBlacklist(block)) { discarded++; continue; }
+
     // RULE 1: Competitor match — push to relevantBlocks (AI will extract organ/object)
     if (matchesCompetitor(block)) {
       relevantBlocks.push(block);
@@ -198,8 +201,7 @@ function preFilterText(text: string): PreFilterResult {
       continue;
     }
 
-    // RULE 2: Must not be blacklisted AND must contain a valid notice type
-    if (containsBlacklist(block)) { discarded++; continue; }
+    // RULE 2: Must contain a valid notice type
     if (!containsNoticeType(block)) { discarded++; continue; }
 
     // RULE 3: Must match technical scope keywords
