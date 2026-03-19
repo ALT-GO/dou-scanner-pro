@@ -72,6 +72,7 @@ function createMainSectionHeader(text: string): Paragraph[] {
   return [
     new Paragraph({ spacing: { before: 600 }, children: [] }),
     new Paragraph({
+      heading: HeadingLevel.HEADING_1,
       children: [
         new TextRun({
           text: text.toUpperCase(),
