@@ -296,7 +296,9 @@ export default function Index() {
                     readings={readings}
                     onViewReport={handleViewReport}
                     onDownloadReport={handleDownloadReport}
+                    onDeleteReading={handleDeleteReading}
                     downloadingId={downloadingId}
+                    deletingId={deletingId}
                   />
                 </div>
               </motion.div>
