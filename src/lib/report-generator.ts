@@ -329,6 +329,26 @@ export async function generateReport(
           run: { font: 'Arial', size: 20 },
         },
       },
+      paragraphStyles: [
+        {
+          id: "Heading1",
+          name: "Heading 1",
+          basedOn: "Normal",
+          next: "Normal",
+          quickFormat: true,
+          run: { size: 30, bold: true, font: 'Arial', color: 'FFFFFF' },
+          paragraph: { spacing: { before: 600, after: 200 }, outlineLevel: 0 },
+        },
+        {
+          id: "Heading2",
+          name: "Heading 2",
+          basedOn: "Normal",
+          next: "Normal",
+          quickFormat: true,
+          run: { size: 24, bold: true, font: 'Arial', color: ACCENT_COLOR },
+          paragraph: { spacing: { before: 400, after: 160 }, outlineLevel: 1 },
+        },
+      ],
     },
     sections: [{
       properties: {
