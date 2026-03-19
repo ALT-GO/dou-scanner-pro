@@ -72,12 +72,14 @@ const TECHNICAL_KEYWORDS = [
 ];
 
 /**
- * Competitor names for Rule 1 — highest priority matching.
+ * Competitors + Orion (own company) — all trigger "Concorrência / Orion" capture.
  */
 const COMPETITORS = [
-  'ORION ENGENHARIA', 'EQS', 'GREEN4T', 'GLS', 'GEMELO',
-  'CETEST', 'ACECO', 'KOERICH', 'MPE',
-  'ATLÂNTICO ENGENHARIA', 'VIRTUAL', 'VIA ENGENHARIA',
+  'ORION', 'ORION ENGENHARIA', 'ORION ENGENHARIA E TECNOLOGIA',
+  'GREEN4T', 'GLS ENGENHARIA', 'GLS', 'VIRTUAL ENGENHARIA', 'VIRTUAL',
+  'GEMELO', 'CETEST', 'KOERICH', 'KOERICH ENGENHARIA',
+  'MPE', 'MPE ENGENHARIA', 'EQS', 'EQS ENGENHARIA',
+  'ACECO', 'ACECO TI', 'ATLÂNTICO ENGENHARIA', 'VIA ENGENHARIA',
 ];
 
 /**
