@@ -631,21 +631,24 @@ serve(async (req) => {
         return [];
       }
 
-      const batchResults = await Promise.allSettled(
-        batches.map((batch, i) => processBatch(batch, i))
-      );
-
       const successfulResults: any[][] = [];
       let failedBatches = 0;
-      for (const result of batchResults) {
-        if (result.status === "fulfilled") {
-          successfulResults.push(result.value);
-        } else {
-          failedBatches++;
-          // Re-throw hard errors (rate limit / payment)
-          if (result.reason?.message === "RATE_LIMIT") throw new Error("RATE_LIMIT");
-          if (result.reason?.message === "PAYMENT_REQUIRED") throw new Error("PAYMENT_REQUIRED");
-          console.error("Batch failed permanently:", result.reason?.message);
+      const MAX_CONCURRENT = 3;
+
+      for (let i = 0; i < batches.length; i += MAX_CONCURRENT) {
+        const currentBatchSlice = batches.slice(i, i + MAX_CONCURRENT);
+        const batchPromises = currentBatchSlice.map((batch, idx) => processBatch(batch, i + idx));
+        const batchResults = await Promise.allSettled(batchPromises);
+
+        for (const result of batchResults) {
+          if (result.status === "fulfilled") {
+            successfulResults.push(result.value);
+          } else {
+            failedBatches++;
+            if (result.reason?.message === "RATE_LIMIT") throw new Error("RATE_LIMIT");
+            if (result.reason?.message === "PAYMENT_REQUIRED") throw new Error("PAYMENT_REQUIRED");
+            console.error("Batch failed permanently:", result.reason?.message);
+          }
         }
       }
       if (failedBatches > 0) {
