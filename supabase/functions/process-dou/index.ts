@@ -518,7 +518,7 @@ serve(async (req) => {
       const blocksWithId = relevantBlocks.map((text, id) => ({ id, text }));
 
       // Group into batches of ~30000 chars
-      const BATCH_CHAR_LIMIT = 30000;
+      const BATCH_CHAR_LIMIT = 80000;
       const batches: { id: number; text: string }[][] = [];
       let currentBatch: { id: number; text: string }[] = [];
       let currentSize = 0;
