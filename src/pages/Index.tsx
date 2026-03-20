@@ -248,7 +248,8 @@ export default function Index() {
     } finally {
       setIsDeletingAll(false);
     }
-  
+  };
+
 
   const totalOpportunities = readings.reduce((sum, r) => sum + r.total_opportunities, 0);
   const totalCompetitorMentions = readings.reduce((sum, r) => sum + r.total_competitor_mentions, 0);
