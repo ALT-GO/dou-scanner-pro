@@ -38,6 +38,11 @@ const BLACKLIST_TERMS = [
   "EXTRATO DE RESCISÃO", "EXTRATO DO RESCISÃO",
   "EXTRATO DE CONVÊNIO", "EXTRATO DO CONVÊNIO",
   "EXTRATO DE ACORDO", "EXTRATO DO ACORDO",
+  "EXTRATO CONTRATO",
+  "RESULTADO DE LICITAÇÃO", "RESULTADO DE PREGÃO",
+  "EXTRATO DE INEXIGIBILIDADE",
+  "INSUMOS LABORATORIAIS", "MATERIAL HOSPITALAR",
+  "AQUISIÇÃO DE MEDICAMENTOS",
 ];
 
 const SUMMARY_BLACKLIST = [
@@ -150,7 +155,7 @@ function splitIntoBlocks(text: string): string[] {
   const triggerTerms = [
     ...NOTICE_TYPES,
     ...BLACKLIST_TERMS,
-    'EXTRATO DE DISPENSA', 'EXTRATO DE INEXIGIBILIDADE',
+    'EXTRATO DE DISPENSA',
   ].map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   
   const organHeaders = [
