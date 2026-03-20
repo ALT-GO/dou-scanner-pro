@@ -22,7 +22,7 @@ export const TECHNICAL_KEYWORDS = [
   "manutenção predial", "manutenção preventiva", "manutenção corretiva",
   "instalações elétricas", "instalações hidráulicas", "instalação elétrica",
   "ar condicionado", "climatização", "HVAC", "PMOC",
-  "cabeamento estruturado", "fibra óptica", "rede lógica",
+  "cabeamento estruturado", "rede lógica",
   "data center", "datacenter", "sala cofre", "nobreak", "UPS",
   "grupo gerador", "gerador", "subestação",
   "SPDA", "para-raios", "aterramento",

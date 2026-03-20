@@ -76,7 +76,7 @@ const TECHNICAL_KEYWORDS = [
   "subestação", "quadro elétrico", "grupo gerador", "gerador",
   "nobreak", "no-break", "ups", "transformador", "spda",
   "aterramento", "iluminação", "cabeamento estruturado", "cabeamento",
-  "fibra óptica", "infraestrutura elétrica", "baixa tensão", "média tensão",
+  "infraestrutura elétrica", "baixa tensão", "média tensão",
   "climatização", "ar condicionado", "ar-condicionado",
   "hvac", "chiller", "fancoil", "fan coil", "split", "vrf", "vrv",
   "ventilação", "exaustão", "refrigeração", "central de água gelada",

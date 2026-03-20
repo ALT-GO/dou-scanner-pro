@@ -26,7 +26,7 @@ const TECHNICAL_KEYWORDS = [
   'grupo gerador', 'gerador', 'nobreak', 'no-break', 'ups',
   'transformador', 'barramento blindado', 'spda',
   'para-raios', 'aterramento', 'iluminação',
-  'cabeamento estruturado', 'cabeamento', 'fibra óptica',
+  'cabeamento estruturado', 'cabeamento',
   'infraestrutura elétrica', 'baixa tensão', 'média tensão', 'alta tensão',
 
   // SISTEMAS PREDIAIS — CLIMATIZAÇÃO
