@@ -405,7 +405,7 @@ function postProcessPublications(publications: any[]): any[] {
     }
 
     const detectedState = detectState(fullText);
-    const finalState = detectedState || pub.state || null;
+    const finalState = pub.state || detectedState || null;
     const finalSection = finalState && ['SP', 'MG', 'DF'].includes(finalState) ? finalState : 'AVISOS_DIVERSOS';
     return { ...pub, state: finalState, section: finalSection };
   }).filter((p: any) => p.is_relevant);
