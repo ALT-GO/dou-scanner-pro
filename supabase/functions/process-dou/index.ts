@@ -66,7 +66,7 @@ const NOTICE_TYPES = [
 const TECHNICAL_KEYWORDS = [
   "engenharia", "obra", "obras", "construção", "reforma", "reformas",
   "ampliação", "adequação predial", "retrofit", "infraestrutura",
-  "edificação", "pavimentação", "fundação", "estrutura metálica",
+  "edificação", "fundação", "estrutura metálica",
   "alvenaria", "concreto", "projeto executivo", "projeto básico",
   "engenharia civil", "serviços de engenharia",
   "manutenção predial", "manutenção preventiva", "manutenção corretiva",
