@@ -57,6 +57,8 @@ export default function Index() {
     });
   }, []);
 
+  const wait = useCallback((ms: number) => new Promise(resolve => setTimeout(resolve, ms)), []);
+
   const fetchReadings = useCallback(async () => {
     const { data, error } = await supabase
       .from('dou_readings')
@@ -68,6 +70,46 @@ export default function Index() {
     }
     setReadings(data || []);
   }, []);
+
+  const pollReadingCompletion = useCallback(async (readingId: string) => {
+    const POLL_INTERVAL_MS = 3000;
+    const MAX_ATTEMPTS = 70;
+    const startedAt = Date.now();
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      await wait(POLL_INTERVAL_MS);
+
+      const { data, error } = await supabase
+        .from('dou_readings')
+        .select('*')
+        .eq('id', readingId)
+        .single();
+
+      if (error || !data) continue;
+
+      if (data.status === 'completed') {
+        const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
+        addLog('success', `Processamento concluído em ${elapsed}s`);
+        addLog('info', `  ├─ Oportunidades: ${data.total_opportunities}`);
+        addLog('info', `  └─ Menções a concorrentes: ${data.total_competitor_mentions}`);
+        toast.success('Processamento concluído com sucesso!');
+        await fetchReadings();
+        return true;
+      }
+
+      if (data.status === 'error') {
+        addLog('error', 'O processamento falhou no backend');
+        toast.error('Erro no processamento com IA');
+        await fetchReadings();
+        return false;
+      }
+    }
+
+    addLog('warning', 'O processamento continua em segundo plano; atualize o histórico em instantes');
+    await fetchReadings();
+    toast.warning('O processamento segue em segundo plano. Verifique o histórico em alguns instantes.');
+    return false;
+  }, [addLog, fetchReadings, wait]);
 
   useEffect(() => {
     fetchReadings();
@@ -124,7 +166,7 @@ export default function Index() {
       }
 
       updateLastLog('success', `Registro criado: ${reading.id.substring(0, 8)}...`);
-      addLog('processing', `Enviando ${(text.length / 1024).toFixed(0)} KB para a Edge Function (pré-filtro + IA)... isso pode levar até 90s`);
+      addLog('processing', `Enviando ${(text.length / 1024).toFixed(0)} KB para processamento em segundo plano...`);
 
       const startTime = Date.now();
       const { data: result, error: fnError } = await supabase.functions.invoke('process-dou', {
@@ -155,6 +197,13 @@ export default function Index() {
         toast.error(result.error);
         await supabase.from('dou_readings').update({ status: 'error' }).eq('id', reading.id);
         setIsProcessing(false);
+        return;
+      }
+
+      if (result?.accepted) {
+        updateLastLog('success', `Processamento aceito em ${elapsed}s`);
+        addLog('processing', 'A leitura segue em segundo plano; aguardando conclusão do backend...');
+        await pollReadingCompletion(reading.id);
         return;
       }
 
