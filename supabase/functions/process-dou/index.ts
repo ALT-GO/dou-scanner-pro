@@ -450,6 +450,12 @@ Se o OBJETO PRINCIPAL do texto se referir a qualquer um dos itens abaixo, DESCAR
 - Limpeza e conservação (sem vínculo com manutenção predial técnica)
 - Vigilância patrimonial desarmada (sem sistemas eletrônicos)
 - Material de escritório, expediente, impressão gráfica
+- Obras viárias, pavimentação, asfalto, recapeamento, piso intertravado de ruas, estradas e rodovias
+- Obras de urbanismo, revitalização de praças, parques e paisagismo externo
+- Apenas fornecimento/aquisição de materiais (elétricos, construção, hidráulicos) SEM a prestação do serviço de engenharia ou instalação
+- Locação ou aluguel de máquinas pesadas, tratores e equipamentos de terraplanagem
+- Serviços técnicos de assessoria, consultoria ou licenciamento ambiental
+- Serviços de telecomunicações de provedores (links de internet, planos de telefonia móvel, passagem de fibra óptica externa)
 
 Mesmo que o texto contenha palavras como "engenharia", "manutenção" ou "infraestrutura" em contextos genéricos, se o OBJETO PRINCIPAL for um dos itens acima, DESCARTE.
 
