@@ -551,54 +551,56 @@ serve(async (req) => {
           }
 
           try {
-            const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
               method: "POST",
               headers: {
-                Authorization: `Bearer ${LOVABLE_API_KEY}`,
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                model: "google/gemini-2.5-flash",
-                messages: [
-                  { role: "system", content: buildSystemPrompt() },
+                systemInstruction: {
+                  parts: [{ text: buildSystemPrompt() }],
+                },
+                contents: [
                   {
                     role: "user",
-                    content: `Analise este array JSON de blocos e extraia as publicações válidas:\n\n${batchJson}`,
+                    parts: [{ text: `Analise este array JSON de blocos e extraia as publicações válidas:\n\n${batchJson}` }],
                   },
                 ],
                 tools: [{
-                  type: "function",
-                  function: {
+                  functionDeclarations: [{
                     name: "classify_publications",
                     description: "Retorna as publicações estruturadas do DOU Seção 3",
                     parameters: {
-                      type: "object",
+                      type: "OBJECT",
                       properties: {
                         publications: {
-                          type: "array",
+                          type: "ARRAY",
                           items: {
-                            type: "object",
+                            type: "OBJECT",
                             properties: {
-                              block_id: { type: "number", description: "ID numérico do bloco original" },
-                              publication_type: { type: "string" },
-                              organ: { type: "string" },
-                              object_text: { type: "string" },
-                              city: { type: "string" },
-                              estado_execucao: { type: "string", description: "UF de 2 letras onde o serviço/obra será executado (ex: SP, BA, PR, MG, DF). Baseie-se APENAS no local de execução, NUNCA em siglas no nome do órgão." },
-                              is_relevant: { type: "boolean" },
-                              competitor_match: { type: "string" },
+                              block_id: { type: "NUMBER", description: "ID numérico do bloco original" },
+                              publication_type: { type: "STRING" },
+                              organ: { type: "STRING" },
+                              object_text: { type: "STRING" },
+                              city: { type: "STRING" },
+                              estado_execucao: { type: "STRING", description: "UF de 2 letras onde o serviço/obra será executado (ex: SP, BA, PR, MG, DF). Baseie-se APENAS no local de execução, NUNCA em siglas no nome do órgão." },
+                              is_relevant: { type: "BOOLEAN" },
+                              competitor_match: { type: "STRING" },
                             },
                             required: ["block_id", "publication_type", "organ", "estado_execucao", "is_relevant"],
-                            additionalProperties: false,
                           },
                         },
                       },
                       required: ["publications"],
-                      additionalProperties: false,
                     },
-                  },
+                  }],
                 }],
-                tool_choice: { type: "function", function: { name: "classify_publications" } },
+                toolConfig: {
+                  functionCallingConfig: {
+                    mode: "ANY",
+                    allowedFunctionNames: ["classify_publications"],
+                  },
+                },
               }),
             });
 
@@ -607,22 +609,21 @@ serve(async (req) => {
 
             if (!response.ok) {
               const errorText = await response.text();
-              console.error(`AI gateway error (batch ${batchIndex + 1}, attempt ${attempt + 1}): ${response.status} ${errorText}`);
-              if (attempt < MAX_RETRIES) continue; // retry on 503 etc.
-              return []; // give up on this batch, don't kill others
+              console.error(`Gemini API error (batch ${batchIndex + 1}, attempt ${attempt + 1}): ${response.status} ${errorText}`);
+              if (attempt < MAX_RETRIES) continue;
+              return [];
             }
 
             const aiResult = await response.json();
-            const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
+            const toolCall = aiResult.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall)?.functionCall;
 
-            if (toolCall?.function?.arguments) {
+            if (toolCall?.args) {
               try {
-                const parsed = JSON.parse(toolCall.function.arguments);
-                const pubs = parsed.publications || [];
-                console.log(`Batch ${batchIndex + 1}: AI returned ${pubs.length} publications`);
+                const pubs = toolCall.args.publications || [];
+                console.log(`Batch ${batchIndex + 1}: Gemini returned ${pubs.length} publications`);
                 return pubs;
               } catch (parseErr) {
-                console.error(`Failed to parse AI response for batch ${batchIndex + 1}:`, parseErr);
+                console.error(`Failed to parse Gemini response for batch ${batchIndex + 1}:`, parseErr);
                 return [];
               }
             }
