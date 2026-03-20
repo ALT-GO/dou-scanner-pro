@@ -231,6 +231,25 @@ export default function Index() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (!confirm('Tem certeza que deseja excluir TODAS as leituras? Esta ação não pode ser desfeita.')) return;
+    setIsDeletingAll(true);
+    try {
+      const { error } = await supabase.functions.invoke('delete-reading', {
+        body: { deleteAll: true },
+      });
+      if (error) throw error;
+      toast.success('Todas as leituras foram excluídas');
+      setSelectedReadingId(null);
+      setPublications([]);
+      await fetchReadings();
+    } catch {
+      toast.error('Erro ao excluir leituras');
+    } finally {
+      setIsDeletingAll(false);
+    }
+  
+
   const totalOpportunities = readings.reduce((sum, r) => sum + r.total_opportunities, 0);
   const totalCompetitorMentions = readings.reduce((sum, r) => sum + r.total_competitor_mentions, 0);
   const lastReadingDate = readings.length > 0 ? readings[0].reading_date : null;
