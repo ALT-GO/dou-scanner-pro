@@ -39,6 +39,7 @@ export default function Index() {
   const [publications, setPublications] = useState<Publication[]>([]);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const logIdRef = useRef(0);
 
@@ -230,6 +231,26 @@ export default function Index() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (!confirm('Tem certeza que deseja excluir TODAS as leituras? Esta ação não pode ser desfeita.')) return;
+    setIsDeletingAll(true);
+    try {
+      const { error } = await supabase.functions.invoke('delete-reading', {
+        body: { deleteAll: true },
+      });
+      if (error) throw error;
+      toast.success('Todas as leituras foram excluídas');
+      setSelectedReadingId(null);
+      setPublications([]);
+      await fetchReadings();
+    } catch {
+      toast.error('Erro ao excluir leituras');
+    } finally {
+      setIsDeletingAll(false);
+    }
+  };
+
+
   const totalOpportunities = readings.reduce((sum, r) => sum + r.total_opportunities, 0);
   const totalCompetitorMentions = readings.reduce((sum, r) => sum + r.total_competitor_mentions, 0);
   const lastReadingDate = readings.length > 0 ? readings[0].reading_date : null;
@@ -318,8 +339,10 @@ export default function Index() {
                     onViewReport={handleViewReport}
                     onDownloadReport={handleDownloadReport}
                     onDeleteReading={handleDeleteReading}
+                    onDeleteAll={handleDeleteAll}
                     downloadingId={downloadingId}
                     deletingId={deletingId}
+                    isDeletingAll={isDeletingAll}
                   />
                 </div>
               </motion.div>

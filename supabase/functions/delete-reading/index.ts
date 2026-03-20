@@ -12,17 +12,31 @@ serve(async (req) => {
   }
 
   try {
-    const { readingId } = await req.json();
+    const { readingId, deleteAll } = await req.json();
+    
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    if (deleteAll) {
+      // Delete all publications first (FK constraint)
+      await supabase.from("dou_publications").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      // Delete all readings
+      const { error } = await supabase.from("dou_readings").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (error) throw error;
+
+      return new Response(
+        JSON.stringify({ success: true }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (!readingId) {
       return new Response(
         JSON.stringify({ error: "readingId is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Delete publications first (FK constraint)
     await supabase

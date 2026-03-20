@@ -18,11 +18,13 @@ interface ReadingHistoryProps {
   onViewReport: (readingId: string) => void;
   onDownloadReport: (readingId: string) => void;
   onDeleteReading: (readingId: string) => void;
+  onDeleteAll: () => void;
   downloadingId: string | null;
   deletingId: string | null;
+  isDeletingAll: boolean;
 }
 
-export function ReadingHistory({ readings, onViewReport, onDownloadReport, onDeleteReading, downloadingId, deletingId }: ReadingHistoryProps) {
+export function ReadingHistory({ readings, onViewReport, onDownloadReport, onDeleteReading, onDeleteAll, downloadingId, deletingId, isDeletingAll }: ReadingHistoryProps) {
   if (readings.length === 0) {
     return (
       <div className="text-center py-16 text-muted-foreground">
@@ -35,6 +37,22 @@ export function ReadingHistory({ readings, onViewReport, onDownloadReport, onDel
 
   return (
     <div className="space-y-3">
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onDeleteAll}
+          disabled={isDeletingAll}
+          className="text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+        >
+          {isDeletingAll ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          ) : (
+            <Trash2 className="h-4 w-4 mr-2" />
+          )}
+          Excluir tudo
+        </Button>
+      </div>
       {readings.map((reading, i) => (
         <motion.div
           key={reading.id}
