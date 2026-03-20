@@ -756,21 +756,6 @@ serve(async (req) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    const backgroundJob = runProcessingJob(
-      text,
-      readingId,
-      GEMINI_API_KEY,
-      SUPABASE_URL,
-      SUPABASE_SERVICE_ROLE_KEY,
-    ).catch(async (error) => {
-      const msg = error instanceof Error ? error.message : "Unknown error";
-      console.error("process-dou background error:", msg);
-
-      await updateReadingRecord(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, readingId, {
-        status: "error",
-      });
-    });
-
     const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }).EdgeRuntime;
 
     if (!edgeRuntime?.waitUntil) {
@@ -786,6 +771,21 @@ serve(async (req) => {
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const backgroundJob = runProcessingJob(
+      text,
+      readingId,
+      GEMINI_API_KEY,
+      SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY,
+    ).catch(async (error) => {
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      console.error("process-dou background error:", msg);
+
+      await updateReadingRecord(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, readingId, {
+        status: "error",
+      });
+    });
 
     edgeRuntime.waitUntil(backgroundJob);
 
