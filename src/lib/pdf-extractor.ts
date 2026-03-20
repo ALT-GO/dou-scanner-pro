@@ -181,7 +181,7 @@ function splitIntoBlocks(text: string): string[] {
   const triggerTerms = [
     ...NOTICE_TYPES,
     ...BLACKLIST_TERMS,
-    'EXTRATO DE DISPENSA', 'EXTRATO DE INEXIGIBILIDADE',
+    'EXTRATO DE DISPENSA',
   ].map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 
   const organHeaders = [
