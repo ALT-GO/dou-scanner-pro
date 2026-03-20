@@ -105,6 +105,17 @@ const TECHNICAL_KEYWORDS = [
 ];
 
 // ═══════════════════════════════════════════════════
+// NORMALIZATION HELPER
+// ═══════════════════════════════════════════════════
+
+function normalizeText(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+// ═══════════════════════════════════════════════════
 // PRE-FILTER FUNCTIONS (Rule-based NLP)
 // ═══════════════════════════════════════════════════
 
@@ -137,8 +148,18 @@ function matchesCompetitor(text: string): string | null {
 }
 
 function containsBlacklist(text: string): boolean {
+  const normalized = normalizeText(text);
+  return BLACKLIST_TERMS.some(term => normalized.includes(normalizeText(term)));
+}
+
+function containsNoticeType(text: string): boolean {
   const upper = text.toUpperCase();
-  return BLACKLIST_TERMS.some(term => upper.includes(term));
+  return NOTICE_TYPES.some(term => upper.includes(term));
+}
+
+function matchesTechnicalScope(text: string): boolean {
+  const regex = buildTechnicalRegex();
+  return regex.test(text);
 }
 
 function containsNoticeType(text: string): boolean {
