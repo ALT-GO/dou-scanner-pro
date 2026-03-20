@@ -148,9 +148,16 @@ function buildTechnicalRegex(): RegExp {
   return new RegExp(`(${patterns.join('|')})`, 'gi');
 }
 
+function normalizeText(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
 function containsBlacklist(text: string): boolean {
-  const upper = text.toUpperCase();
-  return BLACKLIST_TERMS.some(term => upper.includes(term));
+  const normalized = normalizeText(text);
+  return BLACKLIST_TERMS.some(term => normalized.includes(normalizeText(term)));
 }
 
 function containsNoticeType(text: string): boolean {
