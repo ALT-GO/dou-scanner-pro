@@ -9,7 +9,7 @@ const TECHNICAL_KEYWORDS = [
   // ENGENHARIA E OBRAS
   'engenharia', 'obra', 'obras', 'construção', 'reforma', 'reformas',
   'ampliação', 'adequação predial', 'retrofit', 'infraestrutura',
-  'edificação', 'edificações', 'pavimentação', 'fundação', 'fundações',
+  'edificação', 'edificações', 'fundação', 'fundações',
   'estrutura metálica', 'estruturas metálicas', 'alvenaria', 'concreto',
   'projeto executivo', 'projeto básico', 'projeto arquitetônico',
   'engenharia civil', 'serviços de engenharia',
@@ -26,7 +26,7 @@ const TECHNICAL_KEYWORDS = [
   'grupo gerador', 'gerador', 'nobreak', 'no-break', 'ups',
   'transformador', 'barramento blindado', 'spda',
   'para-raios', 'aterramento', 'iluminação',
-  'cabeamento estruturado', 'cabeamento', 'fibra óptica',
+  'cabeamento estruturado', 'cabeamento',
   'infraestrutura elétrica', 'baixa tensão', 'média tensão', 'alta tensão',
 
   // SISTEMAS PREDIAIS — CLIMATIZAÇÃO
