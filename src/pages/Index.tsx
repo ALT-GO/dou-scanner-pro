@@ -339,8 +339,10 @@ export default function Index() {
                     onViewReport={handleViewReport}
                     onDownloadReport={handleDownloadReport}
                     onDeleteReading={handleDeleteReading}
+                    onDeleteAll={handleDeleteAll}
                     downloadingId={downloadingId}
                     deletingId={deletingId}
+                    isDeletingAll={isDeletingAll}
                   />
                 </div>
               </motion.div>
