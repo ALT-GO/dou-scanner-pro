@@ -492,6 +492,257 @@ IMPORTANTE: Retorne TODAS as publicações válidas com escopo técnico compatí
 // EDGE FUNCTION HANDLER
 // ═══════════════════════════════════════════════════
 
+async function updateReadingRecord(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  readingId: string,
+  payload: Record<string, unknown>
+) {
+  const response = await fetch(`${supabaseUrl}/rest/v1/dou_readings?id=eq.${readingId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${serviceRoleKey}`,
+      apikey: serviceRoleKey,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    console.error("Update reading error:", await response.text());
+  }
+}
+
+async function runProcessingJob(
+  text: string,
+  readingId: string,
+  GEMINI_API_KEY: string,
+  SUPABASE_URL: string,
+  SUPABASE_SERVICE_ROLE_KEY: string,
+) {
+  console.log(`Processing DOU text: ${text.length} chars for reading ${readingId}`);
+
+  const { relevantBlocks, stats } = preFilterText(text);
+  console.log(`Pre-filter: ${stats.total} blocks → ${stats.competitors} competitors, ${stats.technical} technical, ${stats.discarded} discarded`);
+
+  let aiPublications: any[] = [];
+
+  if (relevantBlocks.length > 0) {
+    const blocksWithId = relevantBlocks.map((text, id) => ({ id, text }));
+
+    const BATCH_CHAR_LIMIT = 80000;
+    const batches: { id: number; text: string }[][] = [];
+    let currentBatch: { id: number; text: string }[] = [];
+    let currentSize = 0;
+
+    for (const block of blocksWithId) {
+      if (currentSize + block.text.length > BATCH_CHAR_LIMIT && currentBatch.length > 0) {
+        batches.push(currentBatch);
+        currentBatch = [];
+        currentSize = 0;
+      }
+      currentBatch.push(block);
+      currentSize += block.text.length;
+    }
+    if (currentBatch.length > 0) batches.push(currentBatch);
+
+    console.log(`Sending ${blocksWithId.length} blocks in ${batches.length} parallel batch(es) to AI`);
+
+    const MAX_RETRIES = 2;
+    const RETRY_DELAY_MS = 3000;
+
+    async function processBatch(batch: { id: number; text: string }[], batchIndex: number): Promise<any[]> {
+      const batchJson = JSON.stringify(batch.map(b => ({ id: b.id, text: b.text })));
+      console.log(`AI batch ${batchIndex + 1}/${batches.length} (${batchJson.length} chars, ${batch.length} blocks)`);
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          console.log(`Retry ${attempt}/${MAX_RETRIES} for batch ${batchIndex + 1} after ${RETRY_DELAY_MS}ms`);
+          await new Promise(r => setTimeout(r, RETRY_DELAY_MS * attempt));
+        }
+
+        try {
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              systemInstruction: {
+                parts: [{ text: buildSystemPrompt() }],
+              },
+              contents: [
+                {
+                  role: "user",
+                  parts: [{ text: `Analise este array JSON de blocos e extraia as publicações válidas:
+
+${batchJson}` }],
+                },
+              ],
+              tools: [{
+                functionDeclarations: [{
+                  name: "classify_publications",
+                  description: "Retorna as publicações estruturadas do DOU Seção 3",
+                  parameters: {
+                    type: "OBJECT",
+                    properties: {
+                      publications: {
+                        type: "ARRAY",
+                        items: {
+                          type: "OBJECT",
+                          properties: {
+                            block_id: { type: "NUMBER", description: "ID numérico do bloco original" },
+                            publication_type: { type: "STRING" },
+                            organ: { type: "STRING" },
+                            object_text: { type: "STRING" },
+                            city: { type: "STRING" },
+                            estado_execucao: { type: "STRING", description: "UF de 2 letras onde o serviço/obra será executado (ex: SP, BA, PR, MG, DF). Baseie-se APENAS no local de execução, NUNCA em siglas no nome do órgão." },
+                            is_relevant: { type: "BOOLEAN" },
+                            competitor_match: { type: "STRING" },
+                          },
+                          required: ["block_id", "publication_type", "organ", "estado_execucao", "is_relevant"],
+                        },
+                      },
+                    },
+                    required: ["publications"],
+                  },
+                }],
+              }],
+              toolConfig: {
+                functionCallingConfig: {
+                  mode: "ANY",
+                  allowedFunctionNames: ["classify_publications"],
+                },
+              },
+            }),
+          });
+
+          if (response.status === 429) throw new Error("RATE_LIMIT");
+          if (response.status === 402) throw new Error("PAYMENT_REQUIRED");
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Gemini API error (batch ${batchIndex + 1}, attempt ${attempt + 1}): ${response.status} ${errorText}`);
+            if (attempt < MAX_RETRIES) continue;
+            return [];
+          }
+
+          const aiResult = await response.json();
+          const toolCall = aiResult.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall)?.functionCall;
+
+          if (toolCall?.args) {
+            try {
+              const pubs = toolCall.args.publications || [];
+              console.log(`Batch ${batchIndex + 1}: Gemini returned ${pubs.length} publications`);
+              return pubs;
+            } catch (parseErr) {
+              console.error(`Failed to parse Gemini response for batch ${batchIndex + 1}:`, parseErr);
+              return [];
+            }
+          }
+          return [];
+        } catch (err: any) {
+          if (err.message === "RATE_LIMIT" || err.message === "PAYMENT_REQUIRED") throw err;
+          console.error(`Batch ${batchIndex + 1} attempt ${attempt + 1} error:`, err.message);
+          if (attempt === MAX_RETRIES) return [];
+        }
+      }
+      return [];
+    }
+
+    const successfulResults: any[][] = [];
+    let failedBatches = 0;
+    const MAX_CONCURRENT = 3;
+
+    for (let i = 0; i < batches.length; i += MAX_CONCURRENT) {
+      const currentBatchSlice = batches.slice(i, i + MAX_CONCURRENT);
+      const batchPromises = currentBatchSlice.map((batch, idx) => processBatch(batch, i + idx));
+      const batchResults = await Promise.allSettled(batchPromises);
+
+      for (const result of batchResults) {
+        if (result.status === "fulfilled") {
+          successfulResults.push(result.value);
+        } else {
+          failedBatches++;
+          if (result.reason?.message === "RATE_LIMIT") throw new Error("RATE_LIMIT");
+          if (result.reason?.message === "PAYMENT_REQUIRED") throw new Error("PAYMENT_REQUIRED");
+          console.error("Batch failed permanently:", result.reason?.message);
+        }
+      }
+    }
+    if (failedBatches > 0) {
+      console.log(`${failedBatches}/${batches.length} batches failed — proceeding with ${batches.length - failedBatches} successful`);
+    }
+
+    const rawAiPubs = successfulResults.flat();
+    const blockMap = new Map(blocksWithId.map(b => [b.id, b.text]));
+    aiPublications = rawAiPubs.map((pub: any) => {
+      const uf = (pub.estado_execucao || '').toUpperCase().trim();
+      let section = "AVISOS_DIVERSOS";
+      if (uf === "SP" || uf === "MG" || uf === "DF") {
+        section = uf;
+      }
+      return {
+        ...pub,
+        state: uf || null,
+        section,
+        full_text: blockMap.get(pub.block_id) || '',
+      };
+    });
+    console.log(`Reconstructed full_text for ${aiPublications.length} publications from block IDs (section derived from estado_execucao in code)`);
+  }
+
+  const publications = postProcessPublications(aiPublications);
+  console.log(`Final: ${aiPublications.length} AI raw → ${publications.length} after post-processing`);
+
+  if (publications.length > 0) {
+    const pubRecords = publications.map((pub: any) => ({
+      reading_id: readingId,
+      publication_type: pub.publication_type || "Não identificado",
+      section: pub.section || "AVISOS_DIVERSOS",
+      organ: pub.organ || null,
+      object_text: pub.object_text || null,
+      full_text: pub.full_text || "",
+      state: pub.state || null,
+      is_relevant: pub.is_relevant ?? true,
+      competitor_match: pub.competitor_match || null,
+    }));
+
+    const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/dou_publications`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify(pubRecords),
+    });
+
+    if (!insertRes.ok) {
+      console.error("Insert publications error:", await insertRes.text());
+    }
+  }
+
+  const opportunities = publications.filter((p: any) => ["SP", "MG", "DF", "AVISOS_DIVERSOS"].includes(p.section)).length;
+  const competitorMentions = publications.filter((p: any) => p.section === "CONCORRENTES").length;
+
+  await updateReadingRecord(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, readingId, {
+    status: "completed",
+    total_opportunities: opportunities,
+    total_competitor_mentions: competitorMentions,
+  });
+
+  return {
+    success: true,
+    totalPublications: publications.length,
+    opportunities,
+    competitorMentions,
+    preFilterStats: stats,
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -505,246 +756,42 @@ serve(async (req) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    console.log(`Processing DOU text: ${text.length} chars for reading ${readingId}`);
+    const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }).EdgeRuntime;
 
-    // ── STEP 1: Pre-filter with keyword-based NLP ──
-    const { relevantBlocks, stats } = preFilterText(text);
-    console.log(`Pre-filter: ${stats.total} blocks → ${stats.competitors} competitors, ${stats.technical} technical, ${stats.discarded} discarded`);
-
-    // ── STEP 2: Assign IDs, batch by char limit, process in parallel ──
-    let aiPublications: any[] = [];
-
-    if (relevantBlocks.length > 0) {
-      const blocksWithId = relevantBlocks.map((text, id) => ({ id, text }));
-
-      // Group into batches of ~30000 chars
-      const BATCH_CHAR_LIMIT = 80000;
-      const batches: { id: number; text: string }[][] = [];
-      let currentBatch: { id: number; text: string }[] = [];
-      let currentSize = 0;
-
-      for (const block of blocksWithId) {
-        if (currentSize + block.text.length > BATCH_CHAR_LIMIT && currentBatch.length > 0) {
-          batches.push(currentBatch);
-          currentBatch = [];
-          currentSize = 0;
-        }
-        currentBatch.push(block);
-        currentSize += block.text.length;
-      }
-      if (currentBatch.length > 0) batches.push(currentBatch);
-
-      console.log(`Sending ${blocksWithId.length} blocks in ${batches.length} parallel batch(es) to AI`);
-
-      // Process all batches in parallel with retry and fault tolerance
-      const MAX_RETRIES = 2;
-      const RETRY_DELAY_MS = 3000;
-
-      async function processBatch(batch: { id: number; text: string }[], batchIndex: number): Promise<any[]> {
-        const batchJson = JSON.stringify(batch.map(b => ({ id: b.id, text: b.text })));
-        console.log(`AI batch ${batchIndex + 1}/${batches.length} (${batchJson.length} chars, ${batch.length} blocks)`);
-
-        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-          if (attempt > 0) {
-            console.log(`Retry ${attempt}/${MAX_RETRIES} for batch ${batchIndex + 1} after ${RETRY_DELAY_MS}ms`);
-            await new Promise(r => setTimeout(r, RETRY_DELAY_MS * attempt));
-          }
-
-          try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                systemInstruction: {
-                  parts: [{ text: buildSystemPrompt() }],
-                },
-                contents: [
-                  {
-                    role: "user",
-                    parts: [{ text: `Analise este array JSON de blocos e extraia as publicações válidas:\n\n${batchJson}` }],
-                  },
-                ],
-                tools: [{
-                  functionDeclarations: [{
-                    name: "classify_publications",
-                    description: "Retorna as publicações estruturadas do DOU Seção 3",
-                    parameters: {
-                      type: "OBJECT",
-                      properties: {
-                        publications: {
-                          type: "ARRAY",
-                          items: {
-                            type: "OBJECT",
-                            properties: {
-                              block_id: { type: "NUMBER", description: "ID numérico do bloco original" },
-                              publication_type: { type: "STRING" },
-                              organ: { type: "STRING" },
-                              object_text: { type: "STRING" },
-                              city: { type: "STRING" },
-                              estado_execucao: { type: "STRING", description: "UF de 2 letras onde o serviço/obra será executado (ex: SP, BA, PR, MG, DF). Baseie-se APENAS no local de execução, NUNCA em siglas no nome do órgão." },
-                              is_relevant: { type: "BOOLEAN" },
-                              competitor_match: { type: "STRING" },
-                            },
-                            required: ["block_id", "publication_type", "organ", "estado_execucao", "is_relevant"],
-                          },
-                        },
-                      },
-                      required: ["publications"],
-                    },
-                  }],
-                }],
-                toolConfig: {
-                  functionCallingConfig: {
-                    mode: "ANY",
-                    allowedFunctionNames: ["classify_publications"],
-                  },
-                },
-              }),
-            });
-
-            if (response.status === 429) throw new Error("RATE_LIMIT");
-            if (response.status === 402) throw new Error("PAYMENT_REQUIRED");
-
-            if (!response.ok) {
-              const errorText = await response.text();
-              console.error(`Gemini API error (batch ${batchIndex + 1}, attempt ${attempt + 1}): ${response.status} ${errorText}`);
-              if (attempt < MAX_RETRIES) continue;
-              return [];
-            }
-
-            const aiResult = await response.json();
-            const toolCall = aiResult.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall)?.functionCall;
-
-            if (toolCall?.args) {
-              try {
-                const pubs = toolCall.args.publications || [];
-                console.log(`Batch ${batchIndex + 1}: Gemini returned ${pubs.length} publications`);
-                return pubs;
-              } catch (parseErr) {
-                console.error(`Failed to parse Gemini response for batch ${batchIndex + 1}:`, parseErr);
-                return [];
-              }
-            }
-            return [];
-          } catch (err: any) {
-            if (err.message === "RATE_LIMIT" || err.message === "PAYMENT_REQUIRED") throw err;
-            console.error(`Batch ${batchIndex + 1} attempt ${attempt + 1} error:`, err.message);
-            if (attempt === MAX_RETRIES) return []; // exhausted retries
-          }
-        }
-        return [];
-      }
-
-      const successfulResults: any[][] = [];
-      let failedBatches = 0;
-      const MAX_CONCURRENT = 3;
-
-      for (let i = 0; i < batches.length; i += MAX_CONCURRENT) {
-        const currentBatchSlice = batches.slice(i, i + MAX_CONCURRENT);
-        const batchPromises = currentBatchSlice.map((batch, idx) => processBatch(batch, i + idx));
-        const batchResults = await Promise.allSettled(batchPromises);
-
-        for (const result of batchResults) {
-          if (result.status === "fulfilled") {
-            successfulResults.push(result.value);
-          } else {
-            failedBatches++;
-            if (result.reason?.message === "RATE_LIMIT") throw new Error("RATE_LIMIT");
-            if (result.reason?.message === "PAYMENT_REQUIRED") throw new Error("PAYMENT_REQUIRED");
-            console.error("Batch failed permanently:", result.reason?.message);
-          }
-        }
-      }
-      if (failedBatches > 0) {
-        console.log(`${failedBatches}/${batches.length} batches failed — proceeding with ${batches.length - failedBatches} successful`);
-      }
-
-      // Flatten, reconstruct full_text, and derive section from estado_execucao in CODE
-      const rawAiPubs = successfulResults.flat();
-      const blockMap = new Map(blocksWithId.map(b => [b.id, b.text]));
-      aiPublications = rawAiPubs.map((pub: any) => {
-        const uf = (pub.estado_execucao || '').toUpperCase().trim();
-        let section = "AVISOS_DIVERSOS";
-        if (uf === "SP" || uf === "MG" || uf === "DF") {
-          section = uf;
-        }
-        return {
-          ...pub,
-          state: uf || null,
-          section,
-          full_text: blockMap.get(pub.block_id) || '',
-        };
-      });
-      console.log(`Reconstructed full_text for ${aiPublications.length} publications from block IDs (section derived from estado_execucao in code)`);
+    if (!edgeRuntime?.waitUntil) {
+      const result = await runProcessingJob(
+        text,
+        readingId,
+        GEMINI_API_KEY,
+        SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY,
+      );
+      return new Response(
+        JSON.stringify({ ...result, completedSynchronously: true, readingId }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    // ── STEP 3: Post-process ──
-    const publications = postProcessPublications(aiPublications);
-    console.log(`Final: ${aiPublications.length} AI raw → ${publications.length} after post-processing`);
+    const backgroundJob = runProcessingJob(
+      text,
+      readingId,
+      GEMINI_API_KEY,
+      SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY,
+    ).catch(async (error) => {
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      console.error("process-dou background error:", msg);
 
-    // ── STEP 4: Insert into database ──
-    if (publications.length > 0) {
-      const pubRecords = publications.map((pub: any) => ({
-        reading_id: readingId,
-        publication_type: pub.publication_type || "Não identificado",
-        section: pub.section || "AVISOS_DIVERSOS",
-        organ: pub.organ || null,
-        object_text: pub.object_text || null,
-        full_text: pub.full_text || "",
-        state: pub.state || null,
-        is_relevant: pub.is_relevant ?? true,
-        competitor_match: pub.competitor_match || null,
-      }));
-
-      const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/dou_publications`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          apikey: SUPABASE_SERVICE_ROLE_KEY,
-          "Content-Type": "application/json",
-          Prefer: "return=minimal",
-        },
-        body: JSON.stringify(pubRecords),
+      await updateReadingRecord(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, readingId, {
+        status: "error",
       });
-
-      if (!insertRes.ok) {
-        console.error("Insert publications error:", await insertRes.text());
-      }
-    }
-
-    const opportunities = publications.filter((p: any) => ["SP", "MG", "DF", "AVISOS_DIVERSOS"].includes(p.section)).length;
-    const competitorMentions = publications.filter((p: any) => p.section === "CONCORRENTES").length;
-
-    const updateRes = await fetch(`${SUPABASE_URL}/rest/v1/dou_readings?id=eq.${readingId}`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        apikey: SUPABASE_SERVICE_ROLE_KEY,
-        "Content-Type": "application/json",
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify({
-        status: "completed",
-        total_opportunities: opportunities,
-        total_competitor_mentions: competitorMentions,
-      }),
     });
 
-    if (!updateRes.ok) {
-      console.error("Update reading error:", await updateRes.text());
-    }
+    edgeRuntime.waitUntil(backgroundJob);
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        totalPublications: publications.length,
-        opportunities,
-        competitorMentions,
-        preFilterStats: stats,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ success: true, accepted: true, readingId }),
+      { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
