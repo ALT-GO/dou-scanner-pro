@@ -484,6 +484,13 @@ Se o OBJETO PRINCIPAL do texto se referir a qualquer um dos itens abaixo, DESCAR
 - Locação ou aluguel de máquinas pesadas, tratores e equipamentos de terraplanagem
 - Serviços técnicos de assessoria, consultoria ou licenciamento ambiental
 - Serviços de telecomunicações de provedores (links de internet, planos de telefonia móvel, passagem de fibra óptica externa)
+- Construção de casas populares, unidades habitacionais, conjuntos habitacionais, programa Minha Casa Minha Vida, módulos sanitários
+- Infraestrutura externa: iluminação pública de ruas, saneamento básico, adutoras, poços artesianos/tubulares, drenagem, bueiros
+- Equipamentos médicos, hospitalares, balanças industriais/comerciais
+
+ATENÇÃO REDOBRADA com as palavras "MANUTENÇÃO" e "OBRA":
+A empresa-alvo atua EXCLUSIVAMENTE com Engenharia Predial, Data Centers, Elétrica Predial/Industrial, Climatização de grande porte e Facilities.
+Se o texto falar de manutenção de equipamentos de TI de mesa (scanners, computadores, impressoras), equipamentos hospitalares, balanças, ou obras de infraestrutura externa (iluminação de ruas, saneamento, adutoras, poços artesianos, asfalto) ou construção de casas populares (unidades habitacionais), CLASSIFIQUE COMO is_relevant = false IMEDIATAMENTE.
 
 Mesmo que o texto contenha palavras como "engenharia", "manutenção" ou "infraestrutura" em contextos genéricos, se o OBJETO PRINCIPAL for um dos itens acima, DESCARTE.
 
