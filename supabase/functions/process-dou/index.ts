@@ -788,22 +788,80 @@ ${batchJson}` }],
   };
 }
 
+async function fetchDocumentText(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  documentId: string,
+): Promise<{ text: string; readingId: string }> {
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/documents?id=eq.${documentId}&select=extracted_text,reading_id`,
+    {
+      headers: {
+        Authorization: `Bearer ${serviceRoleKey}`,
+        apikey: serviceRoleKey,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch document: ${response.status}`);
+  }
+
+  const rows = await response.json();
+  if (!rows || rows.length === 0) {
+    throw new Error(`Document not found: ${documentId}`);
+  }
+
+  return { text: rows[0].extracted_text, readingId: rows[0].reading_id };
+}
+
+async function updateDocumentStatus(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  documentId: string,
+  status: string,
+  errorDetails?: string,
+) {
+  const payload: Record<string, unknown> = { status };
+  if (errorDetails) payload.error_details = errorDetails;
+
+  await fetch(`${supabaseUrl}/rest/v1/documents?id=eq.${documentId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${serviceRoleKey}`,
+      apikey: serviceRoleKey,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { text, readingId } = await req.json();
+    const { document_id, readingId } = await req.json();
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+    if (!document_id) throw new Error("document_id is required");
+
+    // Update document status to processing
+    await updateDocumentStatus(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, document_id, "processing");
+
     const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }).EdgeRuntime;
 
-    if (!edgeRuntime?.waitUntil) {
+    const processJob = async () => {
+      console.log(`Fetching document text for document_id: ${document_id}`);
+      const { text } = await fetchDocumentText(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, document_id);
+      console.log(`Document text fetched: ${text.length} chars`);
+
       const result = await runProcessingJob(
         text,
         readingId,
@@ -811,22 +869,24 @@ serve(async (req) => {
         SUPABASE_URL,
         SUPABASE_SERVICE_ROLE_KEY,
       );
+
+      await updateDocumentStatus(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, document_id, "done");
+      return result;
+    };
+
+    if (!edgeRuntime?.waitUntil) {
+      const result = await processJob();
       return new Response(
         JSON.stringify({ ...result, completedSynchronously: true, readingId }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const backgroundJob = runProcessingJob(
-      text,
-      readingId,
-      GEMINI_API_KEY,
-      SUPABASE_URL,
-      SUPABASE_SERVICE_ROLE_KEY,
-    ).catch(async (error) => {
+    const backgroundJob = processJob().catch(async (error) => {
       const msg = error instanceof Error ? error.message : "Unknown error";
       console.error("process-dou background error:", msg);
 
+      await updateDocumentStatus(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, document_id, "error", msg);
       await updateReadingRecord(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, readingId, {
         status: "error",
       });
