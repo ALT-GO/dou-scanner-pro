@@ -14,6 +14,44 @@ export type Database = {
   }
   public: {
     Tables: {
+      documents: {
+        Row: {
+          created_at: string
+          error_details: string | null
+          extracted_text: string | null
+          file_url: string | null
+          id: string
+          reading_id: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          error_details?: string | null
+          extracted_text?: string | null
+          file_url?: string | null
+          id?: string
+          reading_id?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          error_details?: string | null
+          extracted_text?: string | null
+          file_url?: string | null
+          id?: string
+          reading_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documents_reading_id_fkey"
+            columns: ["reading_id"]
+            isOneToOne: false
+            referencedRelation: "dou_readings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dou_publications: {
         Row: {
           competitor_match: string | null
