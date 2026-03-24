@@ -133,6 +133,7 @@ export default function Index() {
     logIdRef.current = 0;
 
     try {
+      // Step 1: Extract text from PDF
       addLog('processing', `Extraindo texto do PDF: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)...`);
 
       const text = await extractTextFromPDF(file);
@@ -145,8 +146,27 @@ export default function Index() {
       }
 
       updateLastLog('success', `Texto extraído: ${text.length.toLocaleString('pt-BR')} caracteres`);
-      addLog('processing', 'Criando registro de leitura no banco de dados...');
 
+      // Step 2: Upload PDF to storage
+      addLog('processing', 'Enviando PDF para armazenamento...');
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${crypto.randomUUID()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from('dou-pdfs')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        addLog('error', 'Falha ao enviar PDF para armazenamento', uploadError.message);
+        toast.error('Erro ao enviar PDF');
+        setIsProcessing(false);
+        return;
+      }
+
+      const { data: publicUrl } = supabase.storage.from('dou-pdfs').getPublicUrl(filePath);
+      updateLastLog('success', 'PDF armazenado com sucesso');
+
+      // Step 3: Create reading record
+      addLog('processing', 'Criando registro de leitura...');
       const today = new Date().toISOString().split('T')[0];
       const { data: reading, error: readingError } = await supabase
         .from('dou_readings')
@@ -166,11 +186,36 @@ export default function Index() {
       }
 
       updateLastLog('success', `Registro criado: ${reading.id.substring(0, 8)}...`);
-      addLog('processing', `Enviando ${(text.length / 1024).toFixed(0)} KB para processamento em segundo plano...`);
+
+      // Step 4: Save extracted text to documents table
+      addLog('processing', `Salvando ${(text.length / 1024).toFixed(0)} KB de texto extraído no banco...`);
+      const { data: doc, error: docError } = await supabase
+        .from('documents')
+        .insert({
+          file_url: publicUrl.publicUrl,
+          extracted_text: text,
+          status: 'pending',
+          reading_id: reading.id,
+        })
+        .select()
+        .single();
+
+      if (docError || !doc) {
+        addLog('error', 'Falha ao salvar texto extraído', docError?.message || 'Resposta vazia');
+        toast.error('Erro ao salvar texto extraído');
+        await supabase.from('dou_readings').update({ status: 'error' }).eq('id', reading.id);
+        setIsProcessing(false);
+        return;
+      }
+
+      updateLastLog('success', 'Texto salvo no banco de dados');
+
+      // Step 5: Call edge function with document_id only (no payload)
+      addLog('processing', 'Enviando para processamento em segundo plano...');
 
       const startTime = Date.now();
       const { data: result, error: fnError } = await supabase.functions.invoke('process-dou', {
-        body: { text, readingId: reading.id },
+        body: { document_id: doc.id, readingId: reading.id },
       });
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
