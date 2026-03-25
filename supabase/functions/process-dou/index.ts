@@ -169,16 +169,6 @@ function matchesTechnicalScope(text: string): boolean {
   return regex.test(text);
 }
 
-function containsNoticeType(text: string): boolean {
-  const upper = text.toUpperCase();
-  return NOTICE_TYPES.some(term => upper.includes(term));
-}
-
-function matchesTechnicalScope(text: string): boolean {
-  const regex = buildTechnicalRegex();
-  return regex.test(text);
-}
-
 /**
  * Split raw DOU text into individual publication blocks.
  * Tolerant regex: matches \n OR 3+ whitespace chars (column breaks in DOU PDFs).
