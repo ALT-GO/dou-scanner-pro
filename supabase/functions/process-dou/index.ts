@@ -403,16 +403,16 @@ function preFilterText(text: string): PreFilterResult {
       continue;
     }
 
-    // REGRA 0.5 (SOBERANA): Blacklist tem prioridade ABSOLUTA — antes de tudo
-    if (containsBlacklist(block)) {
-      discarded++;
-      continue;
-    }
-
-    // RULE 1: Competitor match — push to relevantBlocks (AI will extract organ/object)
+    // RULE 1 — CONCORRENTE TEM PRIORIDADE ABSOLUTA
     if (matchesCompetitor(block)) {
       relevantBlocks.push(block);
       competitors++;
+      continue;
+    }
+
+    // REGRA 0.5 — Blacklist só vale se NÃO for concorrente
+    if (containsBlacklist(block)) {
+      discarded++;
       continue;
     }
 
