@@ -75,136 +75,55 @@ const NOTICE_TYPES = [
 ];
 
 const TECHNICAL_KEYWORDS = [
-  const TECHNICAL_KEYWORDS = [
 
 /* ===== ENGENHARIA / OBRAS ===== */
-"obra",
-"obras",
-"obra de engenharia",
-"construção",
-"reforma",
-"retrofit",
-"adequação",
-"instalações prediais",
-"engenharia elétrica",
-"instalações elétricas",
-"manutenção predial",
+"obra","obras","obra de engenharia","construção","reforma","retrofit","adequação",
+"instalações prediais","engenharia elétrica","instalações elétricas","manutenção predial",
 
 /* ===== ELÉTRICA / ENERGIA ===== */
-"manutenção elétrica",
-"subestação",
-"cabine primária",
-"média tensão",
-"baixa tensão",
-"painel elétrico",
-"quadro elétrico",
-"transformador",
-"spda",
-"para-raios",
-"aterramento",
-"pontos elétricos",
-"gerenciamento de energia",
-"eficiência energética",
+"manutenção elétrica","subestação","cabine primária","média tensão","baixa tensão",
+"painel elétrico","quadro elétrico","transformador","spda","para-raios","aterramento",
+"pontos elétricos","gerenciamento de energia","eficiência energética",
 
-/* ===== UPS / GERADORES / MISSÃO CRÍTICA ===== */
-"ups",
-"no-break",
-"nobreak",
-"sistema ups",
-"manutenção ups",
-"grupo gerador",
-"gerador",
-"gerador diesel",
-"gerador emergência",
+/* ===== UPS / GERADORES ===== */
+"ups","no-break","nobreak","sistema ups","manutenção ups",
+"grupo gerador","gerador","gerador diesel","gerador emergência",
 "geração de energia elétrica",
 
 /* ===== CLIMATIZAÇÃO ===== */
-"climatização",
-"ar condicionado",
-"ar-condicionado",
-"hvac",
-"chiller",
-"fancoil",
-"fan coil",
-"vrf",
-"vrv",
-"refrigeração",
-"condicionamento",
-"torre de resfriamento",
-"central de água gelada",
+"climatização","ar condicionado","ar-condicionado","hvac","chiller",
+"fancoil","fan coil","vrf","vrv","refrigeração","condicionamento",
+"torre de resfriamento","central de água gelada",
 
-/* ===== DATA CENTER / TI CRÍTICA ===== */
-"data center",
-"datacenter",
-"cpd",
-"centro de processamento de dados",
-"sala cofre",
-"sala segura",
-"ambiente seguro",
-"ambiente ti",
-"infraestrutura de ti",
-"private cloud",
-"nuvem privada",
-"virtualização",
-"openstack",
-"linux",
-"ubuntu",
+/* ===== DATA CENTER / TI ===== */
+"data center","datacenter","cpd","centro de processamento de dados",
+"sala cofre","sala segura","ambiente seguro","ambiente ti",
+"infraestrutura de ti","private cloud","nuvem privada",
+"virtualização","openstack","linux","ubuntu",
 
-/* ===== REDES / TELECOM ===== */
-"rede estruturada",
-"cabeamento estruturado",
-"fibra óptica",
-"rede local",
-"network",
-"networking",
-"wifi",
-"wireless",
-"access point",
-"controladora wireless",
-"switch",
-"switches",
+/* ===== REDES ===== */
+"rede estruturada","cabeamento estruturado","fibra óptica",
+"rede local","network","networking","wifi","wireless",
+"access point","controladora wireless","switch","switches",
 
-/* ===== SEGURANÇA ELETRÔNICA ===== */
-"cftv",
-"circuito fechado",
-"controle de acesso",
-"catraca",
-"rfid",
-"segurança eletrônica",
-"sistema de segurança",
-"central de alarme",
-"monitoramento",
-"monitoramento imagem",
+/* ===== SEGURANÇA ===== */
+"cftv","circuito fechado","controle de acesso","catraca","rfid",
+"segurança eletrônica","sistema de segurança","central de alarme",
+"monitoramento","monitoramento imagem",
 
 /* ===== AUTOMAÇÃO ===== */
-"automação predial",
-"supervisão e controle",
-"bms",
-"sistema integrado",
+"automação predial","supervisão e controle","bms","sistema integrado",
 
 /* ===== INCÊNDIO ===== */
-"detecção de incêndio",
-"combate a incêndio",
-"sistema de incêndio",
-"proteção passiva",
+"detecção de incêndio","combate a incêndio","sistema de incêndio","proteção passiva",
 
 /* ===== FOTOVOLTAICO ===== */
-"fotovoltaico",
-"fotovoltaica",
-"energia solar",
-"usina solar",
+"fotovoltaico","fotovoltaica","energia solar","usina solar",
 
-/* ===== SERVIÇOS / MODELOS ===== */
-"turnkey",
-"noc",
-"call center",
-"centro de monitoramento",
-"tecnologia da informação",
-"telecomunicações",
-"iot",
-"internet das coisas"
+/* ===== SERVIÇOS ===== */
+"turnkey","noc","call center","centro de monitoramento",
+"tecnologia da informação","telecomunicações","iot","internet das coisas"
 
-];
 ];
 
 // ═══════════════════════════════════════════════════
@@ -666,7 +585,9 @@ async function getCompanyContext(
   return data.map((c:any)=>`- ${c.descricao}`).join("\n");
 }
 async function runProcessingJob(
- async function runProcessingJob(...) {
+  text: string,
+  readingId: string
+) {
 
   const companyContext = await getCompanyContext(
     SUPABASE_URL,
@@ -729,7 +650,7 @@ async function runProcessingJob(
             },
             body: JSON.stringify({
               systemInstruction: {
-                parts: [{ text: buildSystemPrompt(companyContext) }],
+               parts: [{ text: buildSystemPrompt(companyContext) }],
               },
               contents: [
                 {
