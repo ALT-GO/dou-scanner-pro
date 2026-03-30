@@ -538,7 +538,7 @@ function postProcessPublications(publications: any[]): any[] {
 // AI PROMPT
 // ═══════════════════════════════════════════════════
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(companyContext: string): string {
   return `Você é um especialista em análise de publicações do Diário Oficial da União (DOU) - Seção 3.
 
 ════════════════════════════════════════
@@ -644,9 +644,37 @@ async function updateReadingRecord(
     console.error("Update reading error:", await response.text());
   }
 }
+async function getCompanyContext(
+  SUPABASE_URL: string,
+  SUPABASE_SERVICE_ROLE_KEY: string
+): Promise<string> {
 
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/company_capabilities?select=descricao`,
+    {
+      headers: {
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+      },
+    }
+  );
+
+  const data = await res.json();
+
+  if (!data || data.length === 0) return "";
+
+  return data.map((c:any)=>`- ${c.descricao}`).join("\n");
+}
 async function runProcessingJob(
-  text: string,
+ async function runProcessingJob(...) {
+
+  const companyContext = await getCompanyContext(
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY
+  );
+
+  // resto do código...
+} text: string,
   readingId: string,
   GEMINI_API_KEY: string,
   SUPABASE_URL: string,
@@ -701,7 +729,7 @@ async function runProcessingJob(
             },
             body: JSON.stringify({
               systemInstruction: {
-                parts: [{ text: buildSystemPrompt() }],
+                parts: [{ text: buildSystemPrompt(companyContext) }],
               },
               contents: [
                 {
