@@ -878,6 +878,13 @@ Mesmo que o texto contenha palavras como "engenharia", "manutenção" ou "infrae
 ════════════════════════════════════════
 CONTEXTO
 ════════════════════════════════════════
+A empresa monitorada possui o seguinte escopo técnico:
+
+${companyContext}
+
+Use esse contexto como referência PRINCIPAL para decidir relevância.
+Publicações alinhadas a essas atividades devem ser consideradas relevantes
+mesmo que utilizem terminologias diferentes.
 Você receberá um array JSON de blocos, cada um com um "id" numérico e um "text". Todos os blocos JÁ PASSARAM por um pré-filtro de palavras-chave.
 
 Para CADA bloco, extraia:
