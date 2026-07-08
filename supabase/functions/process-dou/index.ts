@@ -1208,7 +1208,10 @@ ${batchJson}`,
       full_text: pub.full_text || "",
       state: pub.state || null,
       is_relevant: pub.is_relevant ?? true,
-      competitor_match: pub.competitor_match || null,
+      competitor_match:
+        pub.competitor_match && !["none", "null", ""].includes(String(pub.competitor_match).trim().toLowerCase())
+          ? pub.competitor_match
+          : null,
     }));
 
     const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/dou_publications`, {
