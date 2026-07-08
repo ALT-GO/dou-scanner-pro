@@ -268,7 +268,7 @@ const TECHNICAL_KEYWORDS = [
 ];
 
 // ═══════════════════════════════════════════════════
-// NORMALIZATION HELPER
+// NORMALIZATION HELPERS
 // ═══════════════════════════════════════════════════
 
 function normalizeText(text: string): string {
@@ -276,6 +276,15 @@ function normalizeText(text: string): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+}
+
+/**
+ * Collapse whitespace runs to a single space. PDF columns break words like
+ * "energia\nsolar" or "manutenção   predial" — we need those to match too.
+ * Only used for filter matching; the original text is preserved elsewhere.
+ */
+function normalizeForMatching(text: string): string {
+  return text.replace(/\s+/g, " ");
 }
 
 // ═══════════════════════════════════════════════════
@@ -306,28 +315,31 @@ function buildTechnicalRegex(): RegExp {
 
 function matchesCompetitor(text: string): string | null {
   const regex = buildCompetitorRegex();
-  const match = text.match(regex);
+  const match = normalizeForMatching(text).match(regex);
   return match ? match[0].toUpperCase() : null;
 }
 
 function containsBlacklist(text: string): boolean {
-  const normalized = normalizeText(text);
+  const normalized = normalizeText(normalizeForMatching(text));
   return BLACKLIST_TERMS.some((term) => normalized.includes(normalizeText(term)));
 }
 
 function containsNoticeType(text: string): boolean {
-  const upper = text.toUpperCase();
+  const upper = normalizeForMatching(text).toUpperCase();
   return NOTICE_TYPES.some((term) => upper.includes(term));
 }
 
 function matchesTechnicalScope(text: string): boolean {
   const regex = buildTechnicalRegex();
-  return regex.test(text);
+  return regex.test(normalizeForMatching(text));
 }
 
 /**
- * Split raw DOU text into individual publication blocks.
- * Tolerant regex: matches \n OR 3+ whitespace chars (column breaks in DOU PDFs).
+ * Split raw DOU text into individual publication blocks by finding every
+ * trigger (notice type or organ header) as a boundary. Uses a non-word/
+ * start-of-string lookbehind so we never split inside a word, and does not
+ * require whitespace before the trigger — solves cases where the previous
+ * publication has no newline before the next one begins.
  */
 function splitIntoBlocks(text: string): string[] {
   const triggerTerms = [...NOTICE_TYPES, ...BLACKLIST_TERMS, "EXTRATO DE DISPENSA"].map((t) =>
@@ -355,17 +367,35 @@ function splitIntoBlocks(text: string): string[] {
     "COMPANHIA",
     "BANCO",
     "CAIXA",
-  ].map((t) => `${t}\\s`);
+    "PREFEITURA",
+    "GOVERNO",
+    "CÂMARA",
+  ].map((t) => `${t}(?=\\s)`);
 
   const allTriggers = [...triggerTerms, ...organHeaders];
-  const splitPattern = new RegExp(`(?:\\n|\\s{3,})(?=(?:${allTriggers.join("|")}))`, "gi");
+  const scanPattern = new RegExp(
+    `(?<![A-Za-zÀ-ÿ0-9])(?:${allTriggers.join("|")})`,
+    "giu",
+  );
 
-  const blocks = text.split(splitPattern).filter((b) => b && b.trim().length > 50);
+  const indices: number[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = scanPattern.exec(text)) !== null) {
+    indices.push(m.index);
+    if (m.index === scanPattern.lastIndex) scanPattern.lastIndex++;
+  }
 
-  if (blocks.length <= 1) {
+  if (indices.length === 0) {
     return text.split(/\n{2,}/).filter((b) => b.trim().length > 50);
   }
 
+  const blocks: string[] = [];
+  for (let i = 0; i < indices.length; i++) {
+    const start = indices[i];
+    const end = i + 1 < indices.length ? indices[i + 1] : text.length;
+    const block = text.slice(start, end).trim();
+    if (block.length > 50) blocks.push(block);
+  }
   return blocks;
 }
 
