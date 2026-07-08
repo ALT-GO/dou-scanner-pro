@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      company_capabilities: {
+        Row: {
+          created_at: string | null
+          descricao: string
+          id: string
+          tipo: string
+        }
+        Insert: {
+          created_at?: string | null
+          descricao: string
+          id?: string
+          tipo: string
+        }
+        Update: {
+          created_at?: string | null
+          descricao?: string
+          id?: string
+          tipo?: string
+        }
+        Relationships: []
+      }
       documents: {
         Row: {
           created_at: string
