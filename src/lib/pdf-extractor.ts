@@ -162,25 +162,34 @@ function normalizeText(text: string): string {
     .toLowerCase();
 }
 
+/**
+ * Collapse all whitespace runs (spaces, tabs, newlines) into a single space.
+ * Preserves original text elsewhere; used only for keyword/regex matching so
+ * PDF column line-breaks like "energia\nsolar" still match "energia solar".
+ */
+function normalizeForMatching(text: string): string {
+  return text.replace(/\s+/g, ' ');
+}
+
 function containsBlacklist(text: string): boolean {
-  const normalized = normalizeText(text);
+  const normalized = normalizeText(normalizeForMatching(text));
   return BLACKLIST_TERMS.some(term => normalized.includes(normalizeText(term)));
 }
 
 function containsNoticeType(text: string): boolean {
-  const upper = text.toUpperCase();
+  const upper = normalizeForMatching(text).toUpperCase();
   return NOTICE_TYPES.some(term => upper.includes(term));
 }
 
 function matchesCompetitor(text: string): string | null {
   const regex = buildCompetitorRegex();
-  const match = text.match(regex);
+  const match = normalizeForMatching(text).match(regex);
   return match ? match[0].toUpperCase() : null;
 }
 
 function matchesTechnicalScope(text: string): boolean {
   const regex = buildTechnicalRegex();
-  return regex.test(text);
+  return regex.test(normalizeForMatching(text));
 }
 
 export interface PreFilteredBlock {
@@ -191,9 +200,10 @@ export interface PreFilteredBlock {
 }
 
 /**
- * Split DOU text into individual publication blocks.
- * Uses notice-type triggers as paragraph start markers.
- * Tolerant regex: matches \n OR 3+ whitespace chars (for column breaks in DOU PDFs).
+ * Split DOU text into individual publication blocks by finding every trigger
+ * (notice type or organ header) as a boundary — even when there's no clear
+ * whitespace before it. Uses a non-word / start-of-string lookbehind to avoid
+ * splitting inside a word.
  */
 function splitIntoBlocks(text: string): string[] {
   const triggerTerms = [
@@ -207,14 +217,34 @@ function splitIntoBlocks(text: string): string[] {
     'EMPRESA', 'FUNDAÇÃO', 'SUPERINTENDÊNCIA', 'DEPARTAMENTO', 'DIRETORIA',
     'COMANDO', 'TRIBUNAL', 'CONSELHO', 'PRESIDÊNCIA', 'GABINETE',
     'PROCURADORIA', 'DEFENSORIA', 'COMPANHIA', 'BANCO', 'CAIXA',
-  ].map(t => `${t}\\s`);
+    'PREFEITURA', 'GOVERNO', 'CÂMARA',
+  ].map(t => `${t}(?=\\s)`);
 
   const allTriggers = [...triggerTerms, ...organHeaders];
-  const splitPattern = new RegExp(`(?:\\n|\\s{3,})(?=(?:${allTriggers.join('|')}))`, 'gi');
-  const blocks = text.split(splitPattern).filter(b => b && b.trim().length > 50);
+  // Match a trigger only when preceded by a non-word char or start-of-string
+  // so we never split inside another word. Case-insensitive, unicode-aware.
+  const scanPattern = new RegExp(
+    `(?<![A-Za-zÀ-ÿ0-9])(?:${allTriggers.join('|')})`,
+    'giu',
+  );
 
-  if (blocks.length <= 1) {
+  const indices: number[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = scanPattern.exec(text)) !== null) {
+    indices.push(m.index);
+    if (m.index === scanPattern.lastIndex) scanPattern.lastIndex++;
+  }
+
+  if (indices.length === 0) {
     return text.split(/\n{2,}/).filter(b => b.trim().length > 50);
+  }
+
+  const blocks: string[] = [];
+  for (let i = 0; i < indices.length; i++) {
+    const start = indices[i];
+    const end = i + 1 < indices.length ? indices[i + 1] : text.length;
+    const block = text.slice(start, end).trim();
+    if (block.length > 50) blocks.push(block);
   }
   return blocks;
 }
@@ -240,11 +270,12 @@ export function preFilterBlocks(text: string): { relevant: string[]; stats: { to
   for (const block of blocks) {
     if (isSummaryOrHeader(block)) { discarded++; continue; }
 
-    // BLACKLIST SOBERANA — prioridade absoluta, antes de concorrentes
-    if (containsBlacklist(block)) { discarded++; continue; }
-
+    // RULE 1 — CONCORRENTE TEM PRIORIDADE ABSOLUTA (mesmo em Termo Aditivo, Homologação, etc.)
     const competitor = matchesCompetitor(block);
     if (competitor) { relevant.push(block); competitors++; continue; }
+
+    // RULE 2 — Blacklist só se aplica quando NÃO há concorrente no bloco
+    if (containsBlacklist(block)) { discarded++; continue; }
 
     if (!containsNoticeType(block)) { discarded++; continue; }
     if (!matchesTechnicalScope(block)) { discarded++; continue; }
